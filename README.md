@@ -2,6 +2,12 @@
 
 Clickable football program shell for Cy Creek (2026) to pressure-test IA and roles.
 
+## Live links (send these)
+
+- **App:** https://sports-website-navy.vercel.app  
+- **Workout board:** https://sports-website-navy.vercel.app/workout  
+- **GitHub:** https://github.com/CoachBilliott/sports-website  
+
 ## Run (local)
 
 ```bash
@@ -14,10 +20,9 @@ Open [http://localhost:3000/fan](http://localhost:3000/fan) for the public Fan p
 
 ## Show the team at workouts
 
-1. On your laptop: `npm run dev:share`
-2. Click **Show team** in the header (or open `/workout`) — hides the role switcher / mock chrome, opens Depth Charts, optional fullscreen.
-3. On phones (same Wi‑Fi): find your laptop’s IP (`ipconfig` → IPv4), then open  
-   `http://YOUR-IP:3000/workout`
+1. Prefer the live **Workout board** link above (no laptop server needed).
+2. Or on your laptop: `npm run dev:share`, then click **Show team** / open `/workout`.
+3. On phones (same Wi‑Fi only if using local): `http://YOUR-IP:3000/workout`
 
 Tips:
 
