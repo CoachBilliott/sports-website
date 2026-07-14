@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Team OS — UI Mock
 
-## Getting Started
+Clickable football program shell for Cy Creek (2026) to pressure-test IA and roles.
 
-First, run the development server:
+## Run (local)
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) for the staff app.  
+Open [http://localhost:3000/workout](http://localhost:3000/workout) for the **workout board** (depth charts, clean present UI).  
+Open [http://localhost:3000/fan](http://localhost:3000/fan) for the public Fan page.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Show the team at workouts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. On your laptop: `npm run dev:share`
+2. Click **Show team** in the header (or open `/workout`) — hides the role switcher / mock chrome, opens Depth Charts, optional fullscreen.
+3. On phones (same Wi‑Fi): find your laptop’s IP (`ipconfig` → IPv4), then open  
+   `http://YOUR-IP:3000/workout`
 
-## Learn More
+Tips:
 
-To learn more about Next.js, take a look at the following resources:
+- Use **Depth Charts** filters for Varsity Offense / Defense before presenting.
+- **Print** still works for paper boards.
+- **Exit present** returns to the normal mock UI.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## What’s mocked
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Role switcher: Admin · Coordinator · Coach · Player · Parent · Fan
+- Program bar + Offense | Defense + Teach dropdown
+- This Week, Schedule (MaxPreps link), Quizzes, Groups, Staff responsibilities, Admin branding/members
+- Scout / Teach / My Room / Grades (role-gated)
+- Fan public page (minimal)
+- Workout present mode (`/workout` or **Show team**)
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+No real auth, database, or uploads yet.
