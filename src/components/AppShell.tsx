@@ -3966,7 +3966,7 @@ function MyRoomDepthScreen() {
           <p className="mb-3 text-sm text-[var(--cc-steel)]">
             {schemeId} columns for {myGroups.join(", ")} across every team.
             Edits stay on your chart until you Save — then they update the main
-            depth chart. Charts start with 3 rows; filling every spot on the last
+            depth chart. Charts start with 3 rows; putting anyone on the last
             row adds another.
           </p>
           <div className="space-y-5">
@@ -3983,7 +3983,7 @@ function MyRoomDepthScreen() {
             ))}
           </div>
           <p className="mt-3 text-xs text-[var(--cc-steel)]">
-            Charts start with 3 rows; filling the last row adds another.
+            Charts start with 3 rows; putting anyone on the last row adds another.
             {canEdit
               ? " Click a square to search athletes by group · drag to move/swap."
               : ""}
@@ -6555,7 +6555,7 @@ function DepthChartsScreen() {
       </div>
 
       <p className="depth-print-hide text-xs text-zinc-500">
-        Charts start with 3 rows; filling the last row adds another.
+        Charts start with 3 rows; putting anyone on the last row adds another.
         {canMove
           ? " Click a square to search athletes by group · drag to move/swap (Coach+)."
           : ""}

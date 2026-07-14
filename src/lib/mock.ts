@@ -1506,20 +1506,19 @@ function rowIsEmpty(row: (DepthPlayer | null)[]): boolean {
   return row.every((cell) => cell == null);
 }
 
-function rowIsFull(
+/** True if any cell (or any relevantCols cell) on the row has a player. */
+function rowHasPlayerInCols(
   row: (DepthPlayer | null)[],
   relevantCols?: number[],
 ): boolean {
   if (!relevantCols?.length) {
-    return row.length > 0 && row.every((cell) => cell != null);
+    return row.some((cell) => cell != null);
   }
-  return (
-    relevantCols.length > 0 && relevantCols.every((i) => row[i] != null)
-  );
+  return relevantCols.some((i) => row[i] != null);
 }
 
 /**
- * Keep at least MIN_DEPTH_ROWS. When the last row is completely filled
+ * Keep at least MIN_DEPTH_ROWS. When the last row has any player
  * (optionally only in relevantCols — e.g. a coach’s filtered positions),
  * append one empty row so there is always a free depth line.
  */
@@ -1540,7 +1539,10 @@ export function syncDepthBoardRows(
   while (rows.length < MIN_DEPTH_ROWS) {
     rows.push(emptyDepthRow(cols));
   }
-  if (rows.length > 0 && rowIsFull(rows[rows.length - 1]!, relevantCols)) {
+  if (
+    rows.length > 0 &&
+    rowHasPlayerInCols(rows[rows.length - 1]!, relevantCols)
+  ) {
     rows.push(emptyDepthRow(cols));
   }
 
