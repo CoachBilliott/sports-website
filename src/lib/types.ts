@@ -2,26 +2,55 @@ export type Role =
   | "admin"
   | "coordinator"
   | "coach"
-  | "player"
-  | "parent"
-  | "fan";
+  | "player";
 
-export type Side = "offense" | "defense";
+export type Side = "offense" | "defense" | "specialTeams";
+
+/** Calendar / program season key, e.g. `"2026"`. */
+export type SeasonId = string;
+
+export type SeasonMeta = {
+  id: SeasonId;
+  label: string;
+  year: number;
+  /** ISO timestamp when this season was archived (rollover). */
+  archivedAt: string;
+};
+
+/**
+ * Admin schedule for auto-advancing the active week.
+ * `null` / disabled = no automatic advance.
+ */
+export type WeekAutoAdvanceConfig = {
+  enabled: boolean;
+  /** 0 = Sunday … 6 = Saturday (Date#getDay). */
+  dayOfWeek: number;
+  /** Local time `"HH:mm"` (24h). */
+  time: string;
+};
 
 export type ProgramPage =
   | "this-week"
   | "schedule"
+  | "results"
   | "groups"
+  | "season-archives"
   | "admin"
   | "admin-branding"
   | "admin-members"
   | "admin-teams"
+  | "admin-program"
   | "admin-depth-settings"
   | "admin-schedule"
   | "admin-team-goals"
   | "admin-staff"
   | "admin-coach-groups"
   | "staff"
+  | "staff-responsibilities"
+  | "staff-handbook"
+  | "staff-recruiting"
+  | "staff-inventory"
+  | "staff-issued-equipment"
   | "depth-charts"
   | "personnel-players"
   | "personnel-roster-athletes"
@@ -31,7 +60,6 @@ export type ProgramPage =
   | "personnel-program"
   | "personnel-program-summary"
   | "personnel-program-groups"
-  | "personnel-program-positions"
   | "personnel-program-depth"
   | "personnel-attendance"
   | "personnel-attendance-athletes"
@@ -43,6 +71,7 @@ export type ProgramPage =
   | "my-room-quizzes"
   | "my-room-grades"
   | "my-room-responsibles"
+  | "my-room-chat"
   | "account";
 
 export type SidePage =
@@ -54,6 +83,7 @@ export type SidePage =
   | "teach-study"
   | "teach-philosophy"
   | "teach-call-sheet"
+  | "teach-resources"
   | "stats"
   | "scout"
   | "grades"
@@ -61,7 +91,22 @@ export type SidePage =
 
 export type AppPage = ProgramPage | SidePage;
 
-export type NavMenu = Side | "my-room" | "personnel" | "admin";
+export type NavMenu = "team" | "my-room" | "admin" | "staff";
+
+/** File stored in a unit Resources drive (client-side mock) */
+export interface UnitResourceFile {
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  /** data URL or object URL for open/download */
+  dataUrl: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+/** How a game result was last set (MaxPreps sync vs staff edit). */
+export type GameResultSource = "maxpreps" | "manual";
 
 export interface Game {
   id: string;
@@ -73,7 +118,14 @@ export interface Game {
   time: string;
   homeAway: "Home" | "Away";
   venue: string;
+  /**
+   * Display result, e.g. `"W 47-13"` / `"L 10-40"`.
+   * Prefer ourScore/oppScore when editing; keep label in sync.
+   */
   result?: string;
+  ourScore?: number | null;
+  oppScore?: number | null;
+  resultSource?: GameResultSource | null;
   logo: string;
   /** Preseason / regular / playoff event type */
   kind?: "regular" | "two-a-days" | "scrimmage" | "playoff";
@@ -91,6 +143,26 @@ export interface Game {
     roster: string;
     stats: string;
   };
+  links2024: {
+    schedule: string;
+    roster: string;
+    stats: string;
+  };
+}
+
+/** Who authored a quiz question (AI draft vs coach-written). */
+export type QuizQuestionSource = "ai" | "coach";
+
+export interface QuizQuestion {
+  id: string;
+  prompt: string;
+  /** Multiple-choice options (typically 3–4). */
+  options: string[];
+  /** Index into `options` for the correct answer. */
+  correctIndex: number;
+  source: QuizQuestionSource;
+  /** Optional coach note / rationale shown after grading. */
+  explanation?: string;
 }
 
 export interface Quiz {
@@ -98,11 +170,29 @@ export interface Quiz {
   title: string;
   side: Side;
   week: number;
+  /** Schedule game id when tied to a specific week folder. */
+  gameId?: string;
   due: string;
   assignedGroups: string[];
-  status: "assigned" | "completed" | "overdue";
+  status: "draft" | "assigned" | "completed" | "overdue";
   score?: number;
   passingScore: number;
+  questions: QuizQuestion[];
+  /** Last AI/stub generation timestamp (ISO). */
+  generatedAt?: string | null;
+  /** How the current question set was produced. */
+  generationSource?: "ai" | "stub" | "coach" | null;
+}
+
+/** Per-athlete quiz attempt (score is independent of shared Quiz.score). */
+export interface QuizAttempt {
+  id: string;
+  athleteId: string;
+  quizId: string;
+  /** Score percent 0–100 */
+  score: number;
+  completed: boolean;
+  completedAt: string;
 }
 
 export interface CoachResponsibility {
@@ -110,6 +200,15 @@ export interface CoachResponsibility {
   text: string;
   /** Optional deadline for this responsibility */
   dueBy?: string;
+}
+
+/** User-managed weekly to-do on My Stuff → Responsibilities / This Week */
+export interface PersonalTodo {
+  id: string;
+  text: string;
+  done: boolean;
+  /** When quick-added from a staff responsibility, links back for dedupe */
+  sourceResponsibilityId?: string;
 }
 
 export interface CoachDuty {
@@ -129,4 +228,18 @@ export interface GradeRow {
   practice: number;
   game: number;
   pride: "A" | "B" | "C" | "D" | "F";
+}
+
+/** Position-group thread message (session mock chat). */
+export type GroupChatSenderRole = "coach" | "player";
+
+export interface GroupChatMessage {
+  id: string;
+  group: string;
+  senderId: string;
+  senderName: string;
+  senderRole: GroupChatSenderRole;
+  body: string;
+  /** ISO timestamp */
+  createdAt: string;
 }

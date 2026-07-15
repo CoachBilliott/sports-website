@@ -15,8 +15,7 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) for the staff app.  
-Open [http://localhost:3000/workout](http://localhost:3000/workout) for the **workout board** (depth charts, clean present UI).  
-Open [http://localhost:3000/fan](http://localhost:3000/fan) for the public Fan page.
+Open [http://localhost:3000/workout](http://localhost:3000/workout) for the **workout board** (depth charts, clean present UI).
 
 ## Show the team at workouts
 
@@ -32,11 +31,10 @@ Tips:
 
 ## What’s mocked
 
-- Role switcher: Admin · Coordinator · Coach · Player · Parent · Fan
+- Role switcher: Admin · Coordinator · Coach · Player
 - Program bar + Offense | Defense + Teach dropdown
 - This Week, Schedule (MaxPreps link), Quizzes, Groups, Staff responsibilities, Admin branding/members
 - Scout / Teach / My Room / Grades (role-gated)
-- Fan public page (minimal)
 - Workout present mode (`/workout` or **Show team**)
 
 No real auth, database, or uploads yet.

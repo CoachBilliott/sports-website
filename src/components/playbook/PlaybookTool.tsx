@@ -4,11 +4,13 @@ import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 
 
 const LOGO_SRC = "/cypress-creek-logo.png";
 
-export type PlaybookSide = "offense" | "defense";
+export type PlaybookSide = "offense" | "defense" | "specialTeams";
 
 type PlaybookToolProps = {
   side: PlaybookSide;
   canEdit?: boolean;
+  /** When false (archive browse), do not load/save localStorage library. */
+  persistLibrary?: boolean;
 };
 
 function storageKey(side: PlaybookSide) {
@@ -1194,22 +1196,33 @@ function ResourceUploadPanel({ onUploaded, side }: { onUploaded: () => void; sid
   );
 }
 
-export function PlaybookTool({ side, canEdit = true }: PlaybookToolProps) {
-  const sideLabel = side === "defense" ? "Defense" : "Offense";
+export function PlaybookTool({
+  side,
+  canEdit = true,
+  persistLibrary = true,
+}: PlaybookToolProps) {
+  const editAllowed = canEdit && persistLibrary;
+  const sideLabel =
+    side === "defense"
+      ? "Defense"
+      : side === "specialTeams"
+        ? "Special Teams"
+        : "Offense";
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [selectedPlay, setSelectedPlay] = useState<LibraryItem | null>(null);
   const [builderKind, setBuilderKind] = useState<"formation" | "play">("play");
 
   useEffect(() => {
-    setLibrary(loadLibrary(side));
+    setLibrary(persistLibrary ? loadLibrary(side) : []);
     setSelectedPlay(null);
-  }, [side]);
+  }, [side, persistLibrary]);
 
   function refreshLibrary() {
-    setLibrary(loadLibrary(side));
+    setLibrary(persistLibrary ? loadLibrary(side) : []);
   }
 
   function deletePlay(item: LibraryItem) {
+    if (!editAllowed) return;
     if (!window.confirm(`Delete ${item.type} "${item.title}" from the playbook?`)) return;
     const next = loadLibrary(side).filter((x) => x.id !== item.id);
     saveLibrary(side, next);
@@ -1236,7 +1249,7 @@ export function PlaybookTool({ side, canEdit = true }: PlaybookToolProps) {
             {sideLabel.toLowerCase()} library.
           </p>
         </div>
-        {canEdit ? (
+        {editAllowed ? (
           <div className="flex gap-2">
             <button
               type="button"
@@ -1277,14 +1290,14 @@ export function PlaybookTool({ side, canEdit = true }: PlaybookToolProps) {
                 onOpen={
                   item.type === "play" ? () => setSelectedPlay(item) : undefined
                 }
-                onDelete={canEdit ? () => deletePlay(item) : undefined}
+                onDelete={editAllowed ? () => deletePlay(item) : undefined}
               />
             ))}
           </div>
         </div>
       ) : null}
 
-      {canEdit ? (
+      {editAllowed ? (
         <div className="playbook-root overflow-hidden rounded-xl border border-[var(--cc-line)]">
           <PlayDesigner
             key={`${side}-${builderKind}`}
@@ -1295,7 +1308,9 @@ export function PlaybookTool({ side, canEdit = true }: PlaybookToolProps) {
         </div>
       ) : (
         <p className="rounded-xl border border-[var(--cc-line)] bg-white p-4 text-sm text-[var(--cc-steel)]">
-          View only — coaches and above can use the builder.
+          {persistLibrary
+            ? "View only — coaches and above can use the builder."
+            : "Playbook uploads are not stored in archived seasons."}
         </p>
       )}
 

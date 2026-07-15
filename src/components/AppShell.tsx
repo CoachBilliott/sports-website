@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import {
   emptyGameWeekAssets,
+  lookupPositionScoutReport,
   useApp,
   type AttendanceStatus,
   type BrandingConfig,
@@ -13,23 +13,32 @@ import {
 import { PlaybookTool } from "@/components/playbook/PlaybookTool";
 import "@/components/playbook/playbook.css";
 import {
+  WeeklyQuizWeekPanel,
+  useQuizEditorGroupSet,
+} from "@/components/WeeklyQuizzes";
+import {
+  RecruitingProfileFields,
+  recruitingStoredValue,
+  recruitingValuePatch,
+} from "@/components/StaffRecruiting";
+import {
   athletesForDepthPosition,
   coachStaff,
   coachesOnSide,
   cloneDepthBoard,
   currentGame,
+  getNextUpcomingGame,
+  resolveActiveGame,
   depthBoards,
   expandCoachGroupsWith,
-  games,
   gameSlotLabel,
   gameSlotTitle,
-  grades,
+  abbreviateGrade,
+  abbreviateTeam,
   gradClassLabels,
   groupsForDepthPosition,
   migrateGroupAbbreviation,
   myRoomProfile,
-  potw,
-  quizzes,
   syncDepthBoardRows,
   team,
   teamLevels,
@@ -41,14 +50,19 @@ import {
   type PositionType,
   type UnitGoal,
   athleteCustomFieldLabels,
+  athleteGuardianFieldKeys,
   emptyAthleteCustomFields,
   compareByLastName,
   composeDisplayName,
   findDemoPlayerAthlete,
   findDemoMember,
+  demoMemberIdForRole,
+  resolveThisWeekIdentity,
   positionTypes,
   depthSchemeTypeOptions,
+  isRecruitingStructuralKey,
   type DepthColumnDef,
+  type RecruitingSheetColumn,
 } from "@/lib/mock";
 import {
   canAssignCoachGroups,
@@ -59,16 +73,24 @@ import {
   canEditAthleteProfile,
   canOpenAthleteProfile,
   isOwnAccountMember,
+  canEditPositionGroup,
   canEditPositionGroups,
+  editablePositionGroupSet,
+  isCoordinatorOrAdmin,
   canCreatePlayerAccounts,
   canSeeCoachesRoster,
   canManageStaffRole,
   canManageCoachAdminFields,
   staffRolesActorCanCreate,
   canManageMembers,
+  canManageProgramSeason,
+  canImportFromArchive,
+  canDeleteArchivedSeason,
   canMoveDepthPlayers,
   canSeeDepthCharts,
   canSeeMyRoom,
+  canSeeMyRoomStaff,
+  canUseGroupChat,
   canSeePersonnel,
   canSeeScout,
   canSeeStaffRoom,
@@ -78,23 +100,46 @@ import {
   adminMenuLabel,
   canAccessAdminPage,
   isMyRoomPage,
-  isPersonnelPage,
+  isDepthChartPage,
   isAdminPage,
+  isStaffPage,
   isUnitPage,
   myRoomMenuItems,
+  staffMenuItems,
   adminMenuItems,
-  personnelMenuItems,
   programNavForRole,
   roleLabels,
-  unitMenuItems,
+  sideLabel,
+  teamMenuUnits,
+  unitMenuItemsForRole,
+  canAccessUnitPage,
 } from "@/lib/permissions";
-import type { AppPage, CoachDuty, Game, GradeRow, Role, Side } from "@/lib/types";
+import {
+  defaultQuickActionIds,
+  quickActionCatalogForRole,
+  quickActionsOwnerKey,
+  resolveQuickActions,
+} from "@/lib/quickActions";
+import { ImportFromArchiveButton } from "@/components/ImportFromArchive";
+import type {
+  AppPage,
+  CoachDuty,
+  Game,
+  GradeRow,
+  GroupChatSenderRole,
+  Role,
+  Side,
+  WeekAutoAdvanceConfig,
+} from "@/lib/types";
 import {
   Fragment,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
+  type FormEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
@@ -110,20 +155,26 @@ function Panel({
   title,
   action,
   children,
+  className = "",
+  bodyClassName = "",
 }: {
   title: string;
   action?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
+  bodyClassName?: string;
 }) {
   return (
-    <section className="rounded-2xl border border-[var(--cc-line)] bg-white p-5 shadow-[0_1px_0_rgba(10,37,64,0.04)]">
-      <div className="mb-4 flex items-start justify-between gap-3">
+    <section
+      className={`flex flex-col rounded-2xl border border-[var(--cc-line)] bg-white p-5 shadow-[0_1px_0_rgba(10,37,64,0.04)] ${className}`}
+    >
+      <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
         <h2 className="font-[family-name:var(--font-display)] text-xl tracking-wide text-[var(--cc-navy)]">
           {title}
         </h2>
         {action}
       </div>
-      {children}
+      <div className={`min-h-0 flex-1 ${bodyClassName}`}>{children}</div>
     </section>
   );
 }
@@ -377,14 +428,20 @@ function PlayerNameLink({
   const canOpen = canOpenAthleteProfile(role, athlete);
   if (!canOpen || !resolvedId) {
     return (
-      <span className="font-medium text-[var(--cc-navy)]">{name}</span>
+      <span className="whitespace-nowrap font-medium text-[var(--cc-navy)]">
+        {name}
+      </span>
     );
   }
   return (
     <button
       type="button"
-      onClick={() => openPlayerSettings(resolvedId)}
-      className={`text-left ${className}`}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openPlayerSettings(resolvedId);
+      }}
+      className={`whitespace-nowrap text-left ${className}`}
     >
       {name}
     </button>
@@ -417,13 +474,19 @@ function CoachNameLink({
   return (
     <button
       type="button"
-      onClick={() => openCoachSettings(resolvedId)}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCoachSettings(resolvedId);
+      }}
       className={`text-left ${className}`}
     >
       {name}
     </button>
   );
 }
+
+const athleteGuardianFieldKeySet = new Set<string>(athleteGuardianFieldKeys);
 
 function PlayerSettingsOverlay() {
   const {
@@ -432,6 +495,8 @@ function PlayerSettingsOverlay() {
     playerSettingsId,
     closePlayerSettings,
     updateAthlete,
+    inventorySheetColumns,
+    recruitingSheetColumns,
   } = useApp();
   const selected = playerSettingsId
     ? roster.find((a) => a.id === playerSettingsId)
@@ -482,7 +547,7 @@ function PlayerSettingsOverlay() {
                 : " — Coach+ can edit."
               : "."}
           </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 space-y-3">
             <HeadshotField
               url={selected.headshotUrl}
               fileName={selected.headshotFileName}
@@ -494,42 +559,45 @@ function PlayerSettingsOverlay() {
               canEdit={canEdit}
               onChange={(next) => updateAthlete(selected.id, next)}
             />
-            <label className="text-sm">
-              <span className="font-semibold text-[var(--cc-navy)]">
-                First name
-              </span>
-              {canEdit ? (
-                <input
-                  value={selected.firstName}
-                  onChange={(e) =>
-                    updateAthlete(selected.id, { firstName: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
-                />
-              ) : (
-                <p className="mt-1 font-medium text-[var(--cc-navy)]">
-                  {selected.firstName}
-                </p>
-              )}
-            </label>
-            <label className="text-sm">
-              <span className="font-semibold text-[var(--cc-navy)]">
-                Last name
-              </span>
-              {canEdit ? (
-                <input
-                  value={selected.lastName}
-                  onChange={(e) =>
-                    updateAthlete(selected.id, { lastName: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
-                />
-              ) : (
-                <p className="mt-1 font-medium text-[var(--cc-navy)]">
-                  {selected.lastName}
-                </p>
-              )}
-            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm">
+                <span className="font-semibold text-[var(--cc-navy)]">
+                  First name
+                </span>
+                {canEdit ? (
+                  <input
+                    value={selected.firstName}
+                    onChange={(e) =>
+                      updateAthlete(selected.id, { firstName: e.target.value })
+                    }
+                    className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
+                  />
+                ) : (
+                  <p className="mt-1 font-medium text-[var(--cc-navy)]">
+                    {selected.firstName}
+                  </p>
+                )}
+              </label>
+              <label className="text-sm">
+                <span className="font-semibold text-[var(--cc-navy)]">
+                  Last name
+                </span>
+                {canEdit ? (
+                  <input
+                    value={selected.lastName}
+                    onChange={(e) =>
+                      updateAthlete(selected.id, { lastName: e.target.value })
+                    }
+                    className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
+                  />
+                ) : (
+                  <p className="mt-1 font-medium text-[var(--cc-navy)]">
+                    {selected.lastName}
+                  </p>
+                )}
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
             {showBodyMetrics ? (
               <>
                 <label className="text-sm">
@@ -570,6 +638,27 @@ function PlayerSettingsOverlay() {
                     </p>
                   )}
                 </label>
+                <label className="text-sm">
+                  <span className="font-semibold text-[var(--cc-navy)]">
+                    Jersey #
+                  </span>
+                  {canEdit ? (
+                    <input
+                      value={selected.jerseyNumber ?? ""}
+                      onChange={(e) =>
+                        updateAthlete(selected.id, {
+                          jerseyNumber: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. 11"
+                      className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
+                    />
+                  ) : (
+                    <p className="mt-1 text-[var(--cc-navy)]">
+                      {selected.jerseyNumber || "—"}
+                    </p>
+                  )}
+                </label>
               </>
             ) : null}
             <label className="text-sm">
@@ -606,40 +695,74 @@ function PlayerSettingsOverlay() {
                 </p>
               )}
             </label>
+            </div>
           </div>
         </Panel>
 
         {showCustomFields ? (
-          <Panel title="Custom Athlete Fields">
-            <div className="grid gap-3 sm:grid-cols-2">
-              {athleteCustomFieldLabels.map(({ key, label }) => (
-                <label key={key} className="text-sm">
-                  <span className="font-semibold text-[var(--cc-navy)]">
-                    {label}
-                  </span>
-                  {canEdit ? (
-                    <input
-                      value={fields[key]}
-                      onChange={(e) =>
-                        updateAthlete(selected.id, {
-                          customFields: { [key]: e.target.value },
-                        })
-                      }
-                      className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
-                    />
-                  ) : (
-                    <p className="mt-1 text-[var(--cc-navy)]">
+          <>
+            <Panel title="Recruiting">
+              <RecruitingProfileFields
+                athlete={selected}
+                canEdit={canEdit}
+                columns={recruitingSheetColumns}
+                onUpdate={(patch) => updateAthlete(selected.id, patch)}
+              />
+            </Panel>
+            <Panel title="Parent contact">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {athleteCustomFieldLabels
+                  .filter(({ key }) => athleteGuardianFieldKeySet.has(key))
+                  .map(({ key, label }) => (
+                    <label key={key} className="text-sm">
+                      <span className="font-semibold text-[var(--cc-navy)]">
+                        {label}
+                      </span>
+                      {canEdit ? (
+                        <input
+                          value={fields[key]}
+                          onChange={(e) =>
+                            updateAthlete(selected.id, {
+                              customFields: { [key]: e.target.value },
+                            })
+                          }
+                          className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
+                        />
+                      ) : (
+                        <p className="mt-1 text-[var(--cc-navy)]">
+                          {fields[key] || "—"}
+                        </p>
+                      )}
+                    </label>
+                  ))}
+              </div>
+            </Panel>
+            <Panel title="Equipment">
+              <p className="mb-3 text-sm text-[var(--cc-steel)]">
+                Managed on{" "}
+                <span className="font-semibold">
+                  Staff → Inventory → Issued Equipment
+                </span>{" "}
+                — read-only here.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {inventorySheetColumns.map(({ key, label }) => (
+                  <label key={key} className="text-sm">
+                    <span className="font-semibold text-[var(--cc-navy)]">
+                      {label}
+                    </span>
+                    <p className="mt-1 rounded-lg border border-[var(--cc-line)] bg-[var(--cc-field)]/60 px-3 py-2 text-[var(--cc-navy)]">
                       {fields[key] || "—"}
                     </p>
-                  )}
-                </label>
-              ))}
-            </div>
-          </Panel>
+                  </label>
+                ))}
+              </div>
+            </Panel>
+          </>
         ) : (
           <Panel title="Profile">
             <p className="text-sm text-[var(--cc-steel)]">
-              Equipment and guardian fields apply to athletes only.
+              Equipment and parent contact fields apply to athletes only.
             </p>
           </Panel>
         )}
@@ -717,7 +840,7 @@ function CoachSettingsOverlay() {
                 ? "Admin view — contact plus teams, duties, notes, and athletic period."
                 : "Staff contact — name, number, and email."}
           </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 space-y-3">
             <HeadshotField
               url={selected.headshotUrl}
               fileName={selected.headshotFileName}
@@ -729,6 +852,7 @@ function CoachSettingsOverlay() {
               canEdit={canEditHeadshot}
               onChange={(next) => updateMember(selected.id, next)}
             />
+            <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               <span className="font-semibold text-[var(--cc-navy)]">
                 First name
@@ -765,6 +889,8 @@ function CoachSettingsOverlay() {
                 </p>
               )}
             </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               <span className="font-semibold text-[var(--cc-navy)]">Number</span>
               {canEditContact ? (
@@ -797,7 +923,8 @@ function CoachSettingsOverlay() {
                 </p>
               )}
             </label>
-            <p className="text-sm text-[var(--cc-steel)] sm:col-span-2">
+            </div>
+            <p className="text-sm text-[var(--cc-steel)]">
               Role · {roleLabels[selected.role]}
             </p>
           </div>
@@ -885,6 +1012,8 @@ function AccountScreen() {
     teamNames,
     updateAthlete,
     updateMember,
+    inventorySheetColumns,
+    recruitingSheetColumns,
   } = useApp();
   const member = findDemoMember(teamMembers, role);
   const athlete =
@@ -929,7 +1058,7 @@ function AccountScreen() {
         </p>
 
         {athlete ? (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 space-y-3">
             <HeadshotField
               url={athlete.headshotUrl}
               fileName={athlete.headshotFileName}
@@ -944,6 +1073,7 @@ function AccountScreen() {
                 syncMemberFromAthlete(next);
               }}
             />
+            <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               <span className="font-semibold text-[var(--cc-navy)]">
                 First name
@@ -972,6 +1102,8 @@ function AccountScreen() {
                 className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
               />
             </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               <span className="font-semibold text-[var(--cc-navy)]">Height</span>
               <input
@@ -993,6 +1125,19 @@ function AccountScreen() {
                   updateAthlete(athlete.id, { weight: e.target.value })
                 }
                 placeholder="e.g. 195"
+                className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="font-semibold text-[var(--cc-navy)]">
+                Jersey #
+              </span>
+              <input
+                value={athlete.jerseyNumber ?? ""}
+                onChange={(e) =>
+                  updateAthlete(athlete.id, { jerseyNumber: e.target.value })
+                }
+                placeholder="e.g. 11"
                 className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
               />
             </label>
@@ -1022,9 +1167,10 @@ function AccountScreen() {
                 className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
               />
             </label>
+            </div>
           </div>
         ) : member ? (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 space-y-3">
             <HeadshotField
               url={member.headshotUrl}
               fileName={member.headshotFileName}
@@ -1036,6 +1182,7 @@ function AccountScreen() {
               canEdit
               onChange={(next) => updateMember(member.id, next)}
             />
+            <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               <span className="font-semibold text-[var(--cc-navy)]">
                 First name
@@ -1060,6 +1207,8 @@ function AccountScreen() {
                 className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
               />
             </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               <span className="font-semibold text-[var(--cc-navy)]">
                 Phone number
@@ -1082,37 +1231,78 @@ function AccountScreen() {
                 className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
               />
             </label>
+            </div>
           </div>
         ) : null}
       </Panel>
 
       {athlete ? (
-        <Panel title="Athlete fields">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {athleteCustomFieldLabels.map(({ key, label }) => {
-              const fields = {
-                ...emptyAthleteCustomFields(),
-                ...athlete.customFields,
-              };
-              return (
-                <label key={key} className="text-sm">
-                  <span className="font-semibold text-[var(--cc-navy)]">
-                    {label}
-                  </span>
-                  <input
-                    value={fields[key]}
-                    onChange={(e) =>
-                      updateAthlete(athlete.id, {
-                        customFields: { [key]: e.target.value },
-                      })
-                    }
-                    className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
-                  />
-                </label>
-              );
-            })}
-          </div>
-        </Panel>
+        <>
+          <Panel title="Recruiting">
+            <RecruitingProfileFields
+              athlete={athlete}
+              canEdit
+              columns={recruitingSheetColumns}
+              onUpdate={(patch) => updateAthlete(athlete.id, patch)}
+            />
+          </Panel>
+          <Panel title="Parent contact">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {athleteCustomFieldLabels
+                .filter(({ key }) => athleteGuardianFieldKeySet.has(key))
+                .map(({ key, label }) => {
+                  const fields = {
+                    ...emptyAthleteCustomFields(),
+                    ...athlete.customFields,
+                  };
+                  return (
+                    <label key={key} className="text-sm">
+                      <span className="font-semibold text-[var(--cc-navy)]">
+                        {label}
+                      </span>
+                      <input
+                        value={fields[key]}
+                        onChange={(e) =>
+                          updateAthlete(athlete.id, {
+                            customFields: { [key]: e.target.value },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
+                      />
+                    </label>
+                  );
+                })}
+            </div>
+          </Panel>
+          <Panel title="Equipment">
+            <p className="mb-3 text-sm text-[var(--cc-steel)]">
+              Managed on{" "}
+              <span className="font-semibold">
+                Staff → Inventory → Issued Equipment
+              </span>{" "}
+              —
+              read-only here.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {inventorySheetColumns.map(({ key, label }) => {
+                const fields = {
+                  ...emptyAthleteCustomFields(),
+                  ...athlete.customFields,
+                };
+                return (
+                  <label key={key} className="text-sm">
+                    <span className="font-semibold text-[var(--cc-navy)]">
+                      {label}
+                    </span>
+                    <p className="mt-1 rounded-lg border border-[var(--cc-line)] bg-[var(--cc-field)]/60 px-3 py-2 text-[var(--cc-navy)]">
+                      {fields[key] || "—"}
+                    </p>
+                  </label>
+                );
+              })}
+            </div>
+          </Panel>
+        </>
       ) : null}
 
       {member && showStaffDetails ? (
@@ -1217,144 +1407,541 @@ function AccountScreen() {
   );
 }
 
+function opponentMonogram(opponent: string) {
+  const parts = opponent
+    .replace(/[^a-zA-Z\s]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]!.charAt(0)}${parts[1]!.charAt(0)}`.toUpperCase();
+  }
+  return opponent.slice(0, 2).toUpperCase() || "—";
+}
+
+function WeekActionButton({
+  label,
+  onClick,
+  primary = false,
+}: {
+  label: string;
+  onClick: () => void;
+  primary?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        primary
+          ? "rounded-lg bg-[var(--cc-blue)] px-3 py-2 text-sm font-semibold text-white"
+          : "rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
+function QuickActionsPanel({
+  role,
+  identityKey,
+  goUnit,
+  setPage,
+}: {
+  role: Role;
+  identityKey: string;
+  goUnit: (page: AppPage, unit?: Side) => void;
+  setPage: (p: AppPage) => void;
+}) {
+  const {
+    quickActionsByOwner,
+    setQuickActionsForOwner,
+    clearQuickActionsForOwner,
+    isArchiveMode,
+  } = useApp();
+  const ownerKey = quickActionsOwnerKey(role, identityKey);
+  const custom = quickActionsByOwner[ownerKey];
+  const actions = resolveQuickActions(role, custom);
+  const catalog = quickActionCatalogForRole(role);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string[]>(() =>
+    custom && custom.length > 0 ? [...custom] : defaultQuickActionIds(role),
+  );
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(
+        custom && custom.length > 0 ? [...custom] : defaultQuickActionIds(role),
+      );
+    }
+  }, [custom, role, editing]);
+
+  function runAction(id: string) {
+    const spec = catalog.find((a) => a.id === id);
+    if (!spec) return;
+    if (spec.side) goUnit(spec.page, spec.side);
+    else setPage(spec.page);
+  }
+
+  return (
+    <Panel
+      title="Quick actions"
+      action={
+        isArchiveMode ? null : (
+          <button
+            type="button"
+            onClick={() => {
+              if (editing) {
+                setDraft(
+                  custom && custom.length > 0
+                    ? [...custom]
+                    : defaultQuickActionIds(role),
+                );
+              }
+              setEditing((v) => !v);
+            }}
+            className="rounded border border-[var(--cc-line)] px-2 py-1 text-xs font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+          >
+            {editing ? "Cancel" : "Edit"}
+          </button>
+        )
+      }
+    >
+      {editing ? (
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--cc-steel)]">
+            Choose shortcuts from pages you can open. Leave empty slots unused.
+          </p>
+          <div className="space-y-2">
+            {draft.map((id, index) => (
+              <label
+                key={`slot-${index}`}
+                className="flex flex-wrap items-center gap-2 text-sm"
+              >
+                <span className="w-14 font-semibold text-[var(--cc-navy)]">
+                  Slot {index + 1}
+                </span>
+                <select
+                  value={id}
+                  onChange={(e) => {
+                    const next = [...draft];
+                    next[index] = e.target.value;
+                    setDraft(next);
+                  }}
+                  className="min-w-[12rem] flex-1 rounded-lg border border-[var(--cc-line)] px-2 py-1.5"
+                >
+                  {catalog.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraft((prev) => prev.filter((_, i) => i !== index))
+                  }
+                  className="rounded border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                >
+                  Remove
+                </button>
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const unused = catalog.find((a) => !draft.includes(a.id));
+                setDraft((prev) => [
+                  ...prev,
+                  unused?.id ?? catalog[0]?.id ?? "schedule",
+                ]);
+              }}
+              className="rounded-lg border border-[var(--cc-line)] px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+            >
+              + Add slot
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearQuickActionsForOwner(ownerKey);
+                setDraft(defaultQuickActionIds(role));
+                setEditing(false);
+              }}
+              className="rounded-lg border border-[var(--cc-line)] px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+            >
+              Reset defaults
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setQuickActionsForOwner(
+                  ownerKey,
+                  draft.filter(Boolean),
+                );
+                setEditing(false);
+              }}
+              className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {actions.map((a, i) => (
+            <WeekActionButton
+              key={a.id}
+              label={a.label}
+              primary={i === 0}
+              onClick={() => runAction(a.id)}
+            />
+          ))}
+          {actions.length === 0 ? (
+            <p className="text-sm text-[var(--cc-steel)]">
+              No quick actions configured.
+            </p>
+          ) : null}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function DailyCoachMotivation({ context }: { context?: string }) {
+  const [data, setData] = useState<{
+    quote: string;
+    author: string;
+    source: string;
+  } | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams();
+    if (context) params.set("context", context);
+    const q = params.toString();
+    fetch(`/api/daily-motivation${q ? `?${q}` : ""}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then(
+        (json: { quote?: string; author?: string; source?: string }) => {
+          if (cancelled) return;
+          if (!json.quote || !json.author) {
+            setFailed(true);
+            return;
+          }
+          setData({
+            quote: json.quote,
+            author: json.author,
+            source: json.source ?? "calendar",
+          });
+        },
+      )
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [context]);
+
+  if (failed && !data) return null;
+  if (!data) {
+    return (
+      <Panel title="Daily motivation" className="h-full">
+        <p className="text-sm text-[var(--cc-steel)]">Loading today’s cue…</p>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel
+      title="Daily motivation"
+      className="h-full"
+      bodyClassName="flex flex-col overflow-hidden"
+      action={
+        <span className="rounded-full bg-[var(--cc-field)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
+          {data.source === "ai" ? "AI · daily" : "Fresh daily"}
+        </span>
+      }
+    >
+      <div className="flex min-h-0 flex-1 flex-col justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[var(--cc-field)] to-white">
+        <blockquote className="overflow-y-auto p-4">
+          <p className="break-words font-[family-name:var(--font-display)] text-xl leading-snug text-[var(--cc-navy)] sm:text-2xl">
+            “{data.quote}”
+          </p>
+          <footer className="mt-3 text-sm font-semibold text-[var(--cc-blue)]">
+            — {data.author}
+          </footer>
+        </blockquote>
+      </div>
+    </Panel>
+  );
+}
+
 function ThisWeekScreen() {
-  const { role, side, setPage, defenseGoals, offenseGoals } = useApp();
-  const parentLimited = role === "parent";
-  const sideGoals = side === "defense" ? defenseGoals : offenseGoals;
+  const {
+    role,
+    side,
+    setPage,
+    setSide,
+    roster,
+    teamMembers,
+    coachAssignments,
+    gameMetaOverrides,
+    disabledOptionalGames,
+    personalTodosByOwner,
+    addPersonalTodo,
+    updatePersonalTodo,
+    togglePersonalTodo,
+    removePersonalTodo,
+    activeGameId,
+    season,
+    isArchiveMode,
+    scheduleGames,
+  } = useApp();
+
+  const identity = useMemo(
+    () =>
+      resolveThisWeekIdentity(
+        role,
+        side,
+        teamMembers,
+        roster,
+        coachAssignments,
+      ),
+    [role, side, teamMembers, roster, coachAssignments],
+  );
+
+  const nextGameId = useSiteActiveGameId();
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [nextGameId]);
+
+  const game = useMemo(() => {
+    const visible = visibleScheduleGames(scheduleGames, disabledOptionalGames);
+    const base =
+      visible.find((g) => g.id === nextGameId) ??
+      resolveActiveGame(
+        visible,
+        activeGameId,
+        undefined,
+        Number(season) || undefined,
+      );
+    return mergeGameMeta(base, gameMetaOverrides);
+  }, [
+    nextGameId,
+    gameMetaOverrides,
+    disabledOptionalGames,
+    activeGameId,
+    season,
+    scheduleGames,
+  ]);
+
+  const greetingName =
+    identity.kind === "player"
+      ? identity.athlete.firstName || identity.athlete.name
+      : identity.kind === "staff"
+          ? identity.profile.name
+          : identity.member?.firstName || roleLabels[role];
+
+  function goUnit(page: AppPage, unit?: Side) {
+    if (unit) setSide(unit);
+    setPage(page);
+  }
+
+  const quickIdentityKey =
+    identity.kind === "player"
+      ? identity.athlete.id
+      : identity.kind === "staff"
+          ? identity.profile.coachId || identity.profile.name
+          : demoMemberIdForRole(role);
+
+  // Same personal list as My Stuff → Responsibilities ("My to-dos")
+  const personalOwnerKey =
+    identity.kind === "staff" ? identity.profile.name : "";
+  const personalTodos = personalTodosByOwner[personalOwnerKey] ?? [];
+  const doneCount = personalTodos.filter((t) => t.done).length;
 
   return (
     <div className="space-y-4">
-      <Panel title="This Week's Opponent">
-        <div className="flex flex-wrap items-start gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[var(--cc-steel)] text-lg font-bold text-white">
-            MR
+      <Panel
+        title={
+          game.kind === "regular" || game.kind === "playoff"
+            ? "This week's game"
+            : "This week"
+        }
+        action={
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
+            Hi, {greetingName}
+          </p>
+        }
+      >
+        <div className="flex flex-wrap items-start gap-5">
+          <div className="relative flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[var(--cc-line)] bg-[var(--cc-field)] shadow-sm">
+            {game.logo && !logoFailed ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={game.logo}
+                alt={`${game.opponent} logo`}
+                className="h-full w-full object-contain p-3"
+                onError={() => setLogoFailed(true)}
+              />
+            ) : (
+              <span className="text-3xl font-bold text-[var(--cc-navy)]">
+                {opponentMonogram(game.opponent)}
+              </span>
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cc-blue)]">
-              Week {currentGame.week} · Fall Camp
+              {gameSlotLabel(game)}
             </p>
-            <h3 className="mt-1 text-2xl font-semibold text-[var(--cc-navy)]">
-              vs {currentGame.opponent}
+            <h3 className="mt-1 flex flex-wrap items-center gap-2 text-3xl font-semibold tracking-tight text-[var(--cc-navy)]">
+              {gameSlotTitle(game)}
+              <GameResultBadge game={game} />
             </h3>
-            <p className="mt-1 text-[var(--cc-steel)]">
-              {currentGame.date} · {currentGame.time} · {currentGame.homeAway} ·{" "}
-              {currentGame.venue}
+            <p className="mt-2 text-[var(--cc-steel)]">
+              {game.date} · {game.time} · {game.homeAway} · {game.venue}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              {!parentLimited && canSeeScout(role) && (
-                <button
-                  type="button"
+              {canSeeScout(role) && (
+                <WeekActionButton
+                  label="Open scout"
+                  primary
                   onClick={() => setPage("scout")}
-                  className="rounded-lg bg-[var(--cc-blue)] px-3 py-2 text-sm font-semibold text-white"
-                >
-                  Open scout
-                </button>
+                />
               )}
-              <button
-                type="button"
+              <WeekActionButton
+                label="Full schedule"
                 onClick={() => setPage("schedule")}
-                className="rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm font-semibold text-[var(--cc-navy)]"
-              >
-                Full schedule
-              </button>
+              />
               <a
-                href={team.maxPrepsUrl}
+                href={
+                  game.links2026?.schedule ??
+                  game.dctfUrl ??
+                  team.maxPrepsUrl
+                }
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm font-semibold text-[var(--cc-navy)]"
+                className="rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
               >
-                MaxPreps ↗
+                Opponent ↗
               </a>
             </div>
           </div>
         </div>
       </Panel>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {!parentLimited && (
-          <Panel title={`${side === "defense" ? "Defense" : "Offense"} focus`}>
-            <ul className="space-y-2 text-sm text-[var(--cc-steel)]">
-              <li>
-                <strong className="text-[var(--cc-navy)]">Install:</strong>{" "}
-                {side === "defense" ? "#1 Foundation — Tite front" : "#1 Base run game"}
-              </li>
-              <li>
-                <strong className="text-[var(--cc-navy)]">Quiz:</strong>{" "}
-                {quizzes.find((q) => q.side === side)?.title ?? "None"} · due{" "}
-                {quizzes.find((q) => q.side === side)?.due}
-              </li>
-              <li>
-                <strong className="text-[var(--cc-navy)]">Scout:</strong>{" "}
-                {canSeeScout(role)
-                  ? "Report upload ready for Week 1"
-                  : "Hidden for this role"}
-              </li>
-            </ul>
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setPage("teach-install")}
-                className="text-sm font-semibold text-[var(--cc-blue)]"
-              >
-                View install →
-              </button>
-              {canTakeQuizzes(role) && (
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <DailyCoachMotivation
+          context={`${gameSlotLabel(game)} · ${gameSlotTitle(game)}`}
+        />
+
+        <Panel
+          title="To-do"
+          className="h-full"
+          action={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {personalTodos.length > 0 ? (
+                <span className="rounded-full bg-[var(--cc-blue)]/10 px-2.5 py-1 text-xs font-semibold text-[var(--cc-blue)]">
+                  {doneCount}/{personalTodos.length} done
+                </span>
+              ) : null}
+              {personalOwnerKey && canEditContent(role, isArchiveMode) ? (
                 <button
                   type="button"
-                  onClick={() => setPage("quizzes")}
-                  className="text-sm font-semibold text-[var(--cc-blue)]"
+                  onClick={() => addPersonalTodo(personalOwnerKey)}
+                  className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white"
                 >
-                  Take quiz →
+                  + Add
                 </button>
-              )}
+              ) : null}
             </div>
-          </Panel>
-        )}
-
-        <Panel title="Players of the Week">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {(
-              [
-                ["Varsity D", potw.varsity],
-                ["Scout", potw.scout],
-                ["JV", potw.jv],
-                ["Freshmen", potw.freshmen],
-              ] as const
-            ).map(([label, name]) => (
-              <div
-                key={label}
-                className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-3"
-              >
-                <p className="text-xs uppercase tracking-wide text-[var(--cc-steel)]">
-                  {label}
-                </p>
-                <p className="mt-1 font-semibold text-[var(--cc-navy)]">{name}</p>
-              </div>
-            ))}
-          </div>
+          }
+        >
+          {personalTodos.length === 0 ? (
+            <p className="text-sm text-[var(--cc-steel)]">
+              {personalOwnerKey ? (
+                <>
+                  No to-dos yet. Add one here, or manage them on{" "}
+                  <button
+                    type="button"
+                    onClick={() => setPage("my-room-responsibles")}
+                    className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
+                  >
+                    My Stuff → Responsibilities
+                  </button>
+                  .
+                </>
+              ) : (
+                "No to-dos yet."
+              )}
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--cc-line)] rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)]/30">
+              {personalTodos.map((item) => (
+                <li key={item.id}>
+                  <div
+                    className={`flex flex-wrap items-center gap-2 px-2.5 py-1.5 transition ${
+                      item.done ? "bg-[var(--cc-field)]/80" : "hover:bg-white/80"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      disabled={isArchiveMode}
+                      onChange={() =>
+                        togglePersonalTodo(personalOwnerKey, item.id)
+                      }
+                      className="h-3.5 w-3.5 shrink-0 accent-[var(--cc-blue)]"
+                      aria-label={`Mark done: ${item.text}`}
+                    />
+                    <input
+                      type="text"
+                      value={item.text}
+                      disabled={isArchiveMode}
+                      onChange={(e) =>
+                        updatePersonalTodo(personalOwnerKey, item.id, {
+                          text: e.target.value,
+                        })
+                      }
+                      className={`min-w-[8rem] flex-1 rounded-lg border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm ${
+                        item.done
+                          ? "text-[var(--cc-steel)] line-through"
+                          : "text-[var(--cc-navy)]"
+                      }`}
+                      aria-label="Edit to-do"
+                    />
+                    {!isArchiveMode ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removePersonalTodo(personalOwnerKey, item.id)
+                        }
+                        className="shrink-0 rounded border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
       </div>
 
-      {role !== "parent" && (
-        <Panel
-          title={
-            side === "defense"
-              ? "Defensive Game Goals"
-              : "Offensive Game Goals"
-          }
-        >
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {sideGoals.map((g) => (
-              <li
-                key={g.id}
-                className="rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm text-[var(--cc-navy)]"
-              >
-                {g.text}
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      )}
+      <QuickActionsPanel
+        role={role}
+        identityKey={quickIdentityKey}
+        goUnit={goUnit}
+        setPage={setPage}
+      />
     </div>
   );
 }
@@ -1524,6 +2111,7 @@ const ALL_PRACTICE_DAYS: {
   short: string;
   offense: keyof GameWeekAssets;
   defense: keyof GameWeekAssets;
+  specialTeams: keyof GameWeekAssets;
 }[] = [
   {
     key: "Mon",
@@ -1531,6 +2119,7 @@ const ALL_PRACTICE_DAYS: {
     short: "Mon",
     offense: "offensePracticeMon",
     defense: "defensePracticeMon",
+    specialTeams: "specialTeamsPracticeMon",
   },
   {
     key: "Tue",
@@ -1538,6 +2127,7 @@ const ALL_PRACTICE_DAYS: {
     short: "Tue",
     offense: "offensePracticeTue",
     defense: "defensePracticeTue",
+    specialTeams: "specialTeamsPracticeTue",
   },
   {
     key: "Wed",
@@ -1545,6 +2135,7 @@ const ALL_PRACTICE_DAYS: {
     short: "Wed",
     offense: "offensePracticeWed",
     defense: "defensePracticeWed",
+    specialTeams: "specialTeamsPracticeWed",
   },
   {
     key: "Thu",
@@ -1552,6 +2143,7 @@ const ALL_PRACTICE_DAYS: {
     short: "Thu",
     offense: "offensePracticeThu",
     defense: "defensePracticeThu",
+    specialTeams: "specialTeamsPracticeThu",
   },
   {
     key: "Fri",
@@ -1559,6 +2151,7 @@ const ALL_PRACTICE_DAYS: {
     short: "Fri",
     offense: "offensePracticeFri",
     defense: "defensePracticeFri",
+    specialTeams: "specialTeamsPracticeFri",
   },
   {
     key: "Sat",
@@ -1566,8 +2159,36 @@ const ALL_PRACTICE_DAYS: {
     short: "Sat",
     offense: "offensePracticeSat",
     defense: "defensePracticeSat",
+    specialTeams: "specialTeamsPracticeSat",
   },
 ];
+
+function practiceAssetField(
+  side: Side,
+  day: (typeof ALL_PRACTICE_DAYS)[number],
+): keyof GameWeekAssets {
+  if (side === "defense") return day.defense;
+  if (side === "specialTeams") return day.specialTeams;
+  return day.offense;
+}
+
+function unitScoutField(side: Side): keyof GameWeekAssets {
+  if (side === "defense") return "defenseScout";
+  if (side === "specialTeams") return "specialTeamsScout";
+  return "offenseScout";
+}
+
+function unitCallSheetField(side: Side): keyof GameWeekAssets {
+  if (side === "defense") return "defenseCallSheet";
+  if (side === "specialTeams") return "specialTeamsCallSheet";
+  return "offenseCallSheet";
+}
+
+function unitStatsField(side: Side): keyof GameWeekAssets {
+  if (side === "defense") return "defenseStats";
+  if (side === "specialTeams") return "specialTeamsStats";
+  return "offenseStats";
+}
 
 /** Practice days = Monday through the day before kickoff (preseason = Mon–Sat). */
 function practiceDaysBeforeGame(date: string, kind?: Game["kind"]) {
@@ -1597,6 +2218,10 @@ function mergeGameMeta(
       time?: string;
       venue?: string;
       homeAway?: "Home" | "Away";
+      result?: string | null;
+      ourScore?: number | null;
+      oppScore?: number | null;
+      resultSource?: "maxpreps" | "manual" | null;
     }
   >,
 ): Game {
@@ -1609,11 +2234,68 @@ function mergeGameMeta(
     time: o.time ?? g.time,
     venue: o.venue ?? g.venue,
     homeAway: o.homeAway ?? g.homeAway,
+    result:
+      o.result !== undefined ? o.result || undefined : g.result,
+    ourScore: o.ourScore !== undefined ? o.ourScore : g.ourScore,
+    oppScore: o.oppScore !== undefined ? o.oppScore : g.oppScore,
+    resultSource:
+      o.resultSource !== undefined ? o.resultSource : g.resultSource,
   };
 }
 
-function visibleScheduleGames(disabledOptionalGames: Record<string, boolean>) {
-  return games.filter((g) => !(g.optional && disabledOptionalGames[g.id]));
+function gameResultLabel(g: Game): string | null {
+  if (g.result?.trim()) return g.result.trim();
+  if (
+    typeof g.ourScore === "number" &&
+    typeof g.oppScore === "number" &&
+    Number.isFinite(g.ourScore) &&
+    Number.isFinite(g.oppScore)
+  ) {
+    const outcome =
+      g.ourScore > g.oppScore ? "W" : g.ourScore < g.oppScore ? "L" : "T";
+    return `${outcome} ${g.ourScore}-${g.oppScore}`;
+  }
+  return null;
+}
+
+function GameResultBadge({ game }: { game: Game }) {
+  const label = gameResultLabel(game);
+  if (!label) return null;
+  const win = label.startsWith("W");
+  const loss = label.startsWith("L");
+  return (
+    <span
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold tracking-wide ${
+        win
+          ? "bg-emerald-100 text-emerald-800"
+          : loss
+            ? "bg-rose-100 text-rose-800"
+            : "bg-zinc-100 text-zinc-700"
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function visibleScheduleGames(
+  scheduleGames: Game[],
+  disabledOptionalGames: Record<string, boolean>,
+) {
+  return scheduleGames.filter(
+    (g) => !(g.optional && disabledOptionalGames[g.id]),
+  );
+}
+
+/** Site-wide default week: admin `activeGameId` override, else calendar next-up. */
+function useSiteActiveGameId() {
+  const { activeGameId, disabledOptionalGames, season, scheduleGames } =
+    useApp();
+  return useMemo(() => {
+    const visible = visibleScheduleGames(scheduleGames, disabledOptionalGames);
+    const year = Number(season) || undefined;
+    return resolveActiveGame(visible, activeGameId, undefined, year).id;
+  }, [activeGameId, disabledOptionalGames, season, scheduleGames]);
 }
 
 /** Schedule weeks as accordions — header only, no MaxPreps / full schedule extras. */
@@ -1628,13 +2310,13 @@ function WeekSections({
   gameFilter?: (game: Game) => boolean;
   children: (game: Game) => React.ReactNode;
 }) {
-  const { gameMetaOverrides, disabledOptionalGames } = useApp();
+  const { gameMetaOverrides, disabledOptionalGames, scheduleGames } = useApp();
   const visibleGames = useMemo(
     () =>
-      visibleScheduleGames(disabledOptionalGames).filter((g) =>
+      visibleScheduleGames(scheduleGames, disabledOptionalGames).filter((g) =>
         gameFilter ? gameFilter(g) : true,
       ),
-    [disabledOptionalGames, gameFilter],
+    [disabledOptionalGames, gameFilter, scheduleGames],
   );
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -1675,8 +2357,9 @@ function WeekSections({
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-blue)]">
                     {gameSlotLabel(g)}
                   </p>
-                  <p className="truncate text-base font-bold text-[var(--cc-navy)]">
-                    {gameSlotTitle(g)}
+                  <p className="flex flex-wrap items-center gap-2 truncate text-base font-bold text-[var(--cc-navy)]">
+                    <span className="truncate">{gameSlotTitle(g)}</span>
+                    <GameResultBadge game={g} />
                   </p>
                   <p className="text-sm text-[var(--cc-steel)]">
                     {g.date} · {g.homeAway}
@@ -1700,6 +2383,14 @@ function WeekSections({
   );
 }
 
+function ResultsRedirectToSchedule() {
+  const { setPage } = useApp();
+  useLayoutEffect(() => {
+    setPage("schedule");
+  }, [setPage]);
+  return null;
+}
+
 function ScheduleScreen() {
   const {
     role,
@@ -1711,11 +2402,49 @@ function ScheduleScreen() {
     setSide,
     setPage,
     branding,
+    setGameMeta,
+    setOptionalGameEnabled,
+    setGameResult,
+    syncMaxPrepsResults,
+    maxPrepsLastSyncAt,
+    isArchiveMode,
+    scheduleGames,
   } = useApp();
   const [openId, setOpenId] = useState<string | null>(null);
-  const canEdit = canEditContent(role);
+  const [editing, setEditing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const autoSynced = useRef(false);
+  const canEdit = canEditContent(role, isArchiveMode);
+  const canEditMeta = canEditScheduleMeta(role, isArchiveMode);
+  const canEditScores = canEditMeta;
   const canScout = canSeeScout(role);
-  const visibleGames = visibleScheduleGames(disabledOptionalGames);
+  const isPlayer = role === "player";
+  const showScheduleBundles = canEdit || (canScout && !isPlayer);
+  const visibleGames = visibleScheduleGames(scheduleGames, disabledOptionalGames);
+  const optionalGames = scheduleGames.filter((g) => g.optional);
+  const preseasonOptional = optionalGames.filter((g) => g.kind !== "playoff");
+  const playoffOptional = optionalGames.filter((g) => g.kind === "playoff");
+
+  const runSync = async (force = false) => {
+    setSyncing(true);
+    setSyncMsg(null);
+    const res = await syncMaxPrepsResults({ force });
+    setSyncMsg(res.message);
+    setSyncing(false);
+  };
+
+  useEffect(() => {
+    autoSynced.current = false;
+  }, [season, isArchiveMode]);
+
+  useEffect(() => {
+    if (isArchiveMode) return;
+    if (autoSynced.current) return;
+    autoSynced.current = true;
+    void runSync(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot auto pull on schedule load
+  }, [season, isArchiveMode]);
 
   useEffect(() => {
     if (visibleGames.length === 0) {
@@ -1737,32 +2466,303 @@ function ScheduleScreen() {
       <Panel
         title={`${season} Schedule`}
         action={
-          <a
-            href={branding.maxPrepsUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg bg-[var(--cc-blue)] px-3 py-2 text-sm font-semibold text-white"
-          >
-            Our MaxPreps ↗
-          </a>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {canEditMeta ? (
+              <button
+                type="button"
+                onClick={() => setEditing((v) => !v)}
+                className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+              >
+                {editing ? "Done" : "Edit"}
+              </button>
+            ) : null}
+            {canEditMeta && !isArchiveMode ? (
+              <>
+                <button
+                  type="button"
+                  disabled={syncing}
+                  onClick={() => void runSync(false)}
+                  className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)] disabled:opacity-50"
+                >
+                  {syncing ? "Syncing…" : "Sync MaxPreps"}
+                </button>
+                <button
+                  type="button"
+                  disabled={syncing}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "Force MaxPreps sync? This overwrites manually entered results.",
+                      )
+                    ) {
+                      return;
+                    }
+                    void runSync(true);
+                  }}
+                  className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)] disabled:opacity-50"
+                  title="Overwrite manual results with MaxPreps"
+                >
+                  Force sync
+                </button>
+              </>
+            ) : null}
+            <a
+              href={branding.maxPrepsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg bg-[var(--cc-blue)] px-3 py-2 text-sm font-semibold text-white"
+            >
+              Our MaxPreps ↗
+            </a>
+          </div>
         }
       >
         <p className="text-sm text-[var(--cc-steel)]">
-          Uploads here sync straight into the matching Offense / Defense folder
-          for that week (scout, call sheet, stats, practice). Event details and
-          optional weeks are managed in{" "}
-          <span className="font-semibold">
-            {role === "admin"
-              ? "Admin"
-              : role === "coordinator"
-                ? "Controls"
-                : "Admin / Controls"}{" "}
-            → Schedule
-          </span>{" "}
-          and sync to Schedule, Grades, Stats, Scout, Call Sheets, Practice
-          Plans, and Quizzes.
+          {isPlayer
+            ? "Open a week for opponent links and scouting reports."
+            : "Uploads here sync straight into the matching Offense / Defense folder for that week (scout, call sheet, stats, practice)."}
+          {canEditMeta
+            ? editing
+              ? " Edit optional weeks and event details below — changes sync to Grades, Stats, Scout, Call Sheets, Practice Plans, and Quizzes."
+              : " Use Edit to manage optional weeks and event details."
+            : ""}
+          {!isArchiveMode && maxPrepsLastSyncAt ? (
+            <>
+              {" "}
+              Last MaxPreps sync{" "}
+              {new Date(maxPrepsLastSyncAt).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+              .
+            </>
+          ) : null}
         </p>
+        {syncMsg ? (
+          <p className="mt-2 text-sm font-medium text-[var(--cc-navy)]">
+            {syncMsg}
+          </p>
+        ) : null}
       </Panel>
+
+      {editing && canEditMeta ? (
+        <>
+          <Panel title="Optional weeks">
+            <p className="mb-3 text-sm text-[var(--cc-steel)]">
+              Toggle which optional slots appear everywhere weeks are listed —
+              Schedule, Team Grades, Stats, Call Sheets, Practice Plans, Quizzes,
+              and Scout. Playoff weeks start hidden.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-[var(--cc-steel)]">
+                  Preseason
+                </p>
+                <div className="mt-2 space-y-2">
+                  {preseasonOptional.map((g) => (
+                    <label
+                      key={g.id}
+                      className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--cc-navy)]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!disabledOptionalGames[g.id]}
+                        onChange={(e) =>
+                          setOptionalGameEnabled(g.id, e.target.checked)
+                        }
+                        className="h-4 w-4 accent-[var(--cc-blue)]"
+                      />
+                      {gameSlotTitle(g)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-[var(--cc-steel)]">
+                  Playoffs (6 weeks)
+                </p>
+                <div className="mt-2 space-y-2">
+                  {playoffOptional.map((g) => (
+                    <label
+                      key={g.id}
+                      className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--cc-navy)]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!disabledOptionalGames[g.id]}
+                        onChange={(e) =>
+                          setOptionalGameEnabled(g.id, e.target.checked)
+                        }
+                        className="h-4 w-4 accent-[var(--cc-blue)]"
+                      />
+                      {gameSlotLabel(g)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel title={`${season} event details`}>
+            <p className="mb-3 text-sm text-[var(--cc-steel)]">
+              Edit opponent/event name, date, time, venue, and home/away for
+              every slot.
+            </p>
+            <div className="space-y-3">
+              {scheduleGames.map((base) => {
+                const g = mergeGameMeta(base, gameMetaOverrides);
+                const hidden = !!(g.optional && disabledOptionalGames[g.id]);
+                return (
+                  <div
+                    key={g.id}
+                    className={`rounded-xl border border-[var(--cc-line)] p-3 ${
+                      hidden ? "bg-zinc-50 opacity-70" : "bg-white"
+                    }`}
+                  >
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-blue)]">
+                          {gameSlotLabel(g)}
+                          {g.optional ? " · Optional" : ""}
+                          {hidden ? " · Hidden" : ""}
+                        </p>
+                        <p className="text-sm font-bold text-[var(--cc-navy)]">
+                          {gameSlotTitle(g)}
+                        </p>
+                      </div>
+                      {g.optional ? (
+                        <button
+                          type="button"
+                          onClick={() => setOptionalGameEnabled(g.id, hidden)}
+                          className="rounded border border-[var(--cc-line)] px-2 py-1 text-xs font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+                        >
+                          {hidden ? "Show" : "Hide"}
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                      <label className="block text-xs font-semibold text-[var(--cc-steel)] lg:col-span-2">
+                        Opponent / event
+                        <input
+                          value={g.opponent}
+                          onChange={(e) =>
+                            setGameMeta(g.id, { opponent: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold text-[var(--cc-steel)]">
+                        Date
+                        <input
+                          value={g.date}
+                          onChange={(e) =>
+                            setGameMeta(g.id, { date: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold text-[var(--cc-steel)]">
+                        Time
+                        <input
+                          value={g.time}
+                          onChange={(e) =>
+                            setGameMeta(g.id, { time: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold text-[var(--cc-steel)]">
+                        Home / Away
+                        <select
+                          value={g.homeAway}
+                          onChange={(e) =>
+                            setGameMeta(g.id, {
+                              homeAway: e.target.value as "Home" | "Away",
+                            })
+                          }
+                          className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
+                        >
+                          <option value="Home">Home</option>
+                          <option value="Away">Away</option>
+                        </select>
+                      </label>
+                      <label className="block text-xs font-semibold text-[var(--cc-steel)] sm:col-span-2 lg:col-span-5">
+                        Venue
+                        <input
+                          value={g.venue}
+                          onChange={(e) =>
+                            setGameMeta(g.id, { venue: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
+                        />
+                      </label>
+                      {canEditScores &&
+                      (g.kind === "regular" || g.kind === "playoff") ? (
+                        <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-5">
+                          <label className="block text-xs font-semibold text-[var(--cc-steel)]">
+                            Our score
+                            <input
+                              type="number"
+                              aria-label={`${g.opponent} our score`}
+                              value={g.ourScore ?? ""}
+                              onChange={(e) => {
+                                const our =
+                                  e.target.value === ""
+                                    ? null
+                                    : Number(e.target.value);
+                                setGameResult(g.id, {
+                                  ourScore: our,
+                                  oppScore: g.oppScore ?? null,
+                                });
+                              }}
+                              className="mt-1 w-20 rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
+                            />
+                          </label>
+                          <label className="block text-xs font-semibold text-[var(--cc-steel)]">
+                            Opp score
+                            <input
+                              type="number"
+                              aria-label={`${g.opponent} opponent score`}
+                              value={g.oppScore ?? ""}
+                              onChange={(e) => {
+                                const opp =
+                                  e.target.value === ""
+                                    ? null
+                                    : Number(e.target.value);
+                                setGameResult(g.id, {
+                                  ourScore: g.ourScore ?? null,
+                                  oppScore: opp,
+                                });
+                              }}
+                              className="mt-1 w-20 rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="rounded border border-[var(--cc-line)] px-2 py-1.5 text-xs font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+                            onClick={() =>
+                              setGameResult(g.id, {
+                                result: null,
+                                ourScore: null,
+                                oppScore: null,
+                              })
+                            }
+                          >
+                            Clear result
+                          </button>
+                          <GameResultBadge game={g} />
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+        </>
+      ) : null}
 
       <div className="space-y-3">
         {visibleGames.map((base) => {
@@ -1793,8 +2793,9 @@ function ScheduleScreen() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-blue)]">
                     {gameSlotLabel(g)}
                   </p>
-                  <p className="truncate text-base font-bold text-[var(--cc-navy)]">
-                    {gameSlotTitle(g)}
+                  <p className="flex flex-wrap items-center gap-2 text-base font-bold text-[var(--cc-navy)]">
+                    <span className="truncate">{gameSlotTitle(g)}</span>
+                    <GameResultBadge game={g} />
                   </p>
                   <p className="text-sm text-[var(--cc-steel)]">
                     {g.date} · {g.time} · {g.homeAway} · {g.venue}
@@ -1807,31 +2808,151 @@ function ScheduleScreen() {
 
               {open ? (
                 <div className="space-y-3 border-t border-[var(--cc-line)] px-3 py-4">
+                  {editing &&
+                  canEditScores &&
+                  (g.kind === "regular" || g.kind === "playoff") ? (
+                    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-[var(--cc-line)] bg-[var(--cc-field)]/40 px-3 py-2">
+                      <label className="block text-xs font-semibold text-[var(--cc-steel)]">
+                        Our score
+                        <input
+                          type="number"
+                          aria-label={`${g.opponent} our score`}
+                          value={g.ourScore ?? ""}
+                          onChange={(e) => {
+                            const our =
+                              e.target.value === ""
+                                ? null
+                                : Number(e.target.value);
+                            setGameResult(g.id, {
+                              ourScore: our,
+                              oppScore: g.oppScore ?? null,
+                            });
+                          }}
+                          className="mt-1 w-20 rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold text-[var(--cc-steel)]">
+                        Opp score
+                        <input
+                          type="number"
+                          aria-label={`${g.opponent} opponent score`}
+                          value={g.oppScore ?? ""}
+                          onChange={(e) => {
+                            const opp =
+                              e.target.value === ""
+                                ? null
+                                : Number(e.target.value);
+                            setGameResult(g.id, {
+                              ourScore: g.ourScore ?? null,
+                              oppScore: opp,
+                            });
+                          }}
+                          className="mt-1 w-20 rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="rounded border border-[var(--cc-line)] px-2 py-1.5 text-xs font-semibold text-[var(--cc-navy)] hover:bg-white"
+                        onClick={() =>
+                          setGameResult(g.id, {
+                            result: null,
+                            ourScore: null,
+                            oppScore: null,
+                          })
+                        }
+                      >
+                        Clear result
+                      </button>
+                      <GameResultBadge game={g} />
+                      {g.resultSource === "manual" ? (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
+                          Manual
+                        </span>
+                      ) : g.resultSource === "maxpreps" ? (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
+                          MaxPreps
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <div className="grid gap-3 lg:grid-cols-2">
                     <ScheduleBundle title={`Links — ${season}`}>
                       <div className="flex flex-wrap gap-2">
-                        <LinkChip href={g.links2026.schedule}>
+                        <LinkChip
+                          href={
+                            Number(season) <= 2025
+                              ? g.links2025.schedule
+                              : g.links2026.schedule
+                          }
+                        >
                           Schedule
                         </LinkChip>
-                        <LinkChip href={g.links2026.roster}>Roster</LinkChip>
-                        <LinkChip href={g.links2026.stats}>Stats</LinkChip>
+                        <LinkChip
+                          href={
+                            Number(season) <= 2025
+                              ? g.links2025.roster
+                              : g.links2026.roster
+                          }
+                        >
+                          Roster
+                        </LinkChip>
+                        <LinkChip
+                          href={
+                            Number(season) <= 2025
+                              ? g.links2025.stats
+                              : g.links2026.stats
+                          }
+                        >
+                          Stats
+                        </LinkChip>
                         <LinkChip href={g.dctfUrl}>DCTF</LinkChip>
                       </div>
                     </ScheduleBundle>
 
-                    <ScheduleBundle title="2025 Season (MaxPreps)">
+                    <ScheduleBundle
+                      title={`${Number(season) - 1} Season (MaxPreps)`}
+                    >
                       <div className="flex flex-wrap gap-2">
-                        <LinkChip href={g.links2025.schedule}>
+                        <LinkChip
+                          href={
+                            Number(season) <= 2025
+                              ? g.links2024.schedule
+                              : g.links2025.schedule
+                          }
+                        >
                           Schedule
                         </LinkChip>
-                        <LinkChip href={g.links2025.roster}>Roster</LinkChip>
-                        <LinkChip href={g.links2025.stats}>Stats</LinkChip>
+                        <LinkChip
+                          href={
+                            Number(season) <= 2025
+                              ? g.links2024.roster
+                              : g.links2025.roster
+                          }
+                        >
+                          Roster
+                        </LinkChip>
+                        <LinkChip
+                          href={
+                            Number(season) <= 2025
+                              ? g.links2024.stats
+                              : g.links2025.stats
+                          }
+                        >
+                          Stats
+                        </LinkChip>
                       </div>
                     </ScheduleBundle>
                   </div>
 
                   {canScout || canEdit ? (
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div
+                      className={
+                        isPlayer
+                          ? "grid gap-3"
+                          : "grid gap-3 md:grid-cols-2 xl:grid-cols-3"
+                      }
+                    >
                       {canScout ? (
                         <ScheduleBundle title="Scouting reports">
                           <div className="flex flex-wrap gap-1.5">
@@ -1861,7 +2982,7 @@ function ScheduleScreen() {
                         </ScheduleBundle>
                       ) : null}
 
-                      {canEdit || canScout ? (
+                      {showScheduleBundles ? (
                         <ScheduleBundle title="Game-day call sheets">
                           <div className="flex flex-wrap gap-1.5">
                             <FileSlot
@@ -1894,7 +3015,7 @@ function ScheduleScreen() {
                         </ScheduleBundle>
                       ) : null}
 
-                      {canEdit || canScout ? (
+                      {showScheduleBundles ? (
                         <ScheduleBundle title="Stat sheets">
                           <div className="flex flex-wrap gap-1.5">
                             <FileSlot
@@ -1925,7 +3046,7 @@ function ScheduleScreen() {
                     </div>
                   ) : null}
 
-                  {canEdit || canScout ? (
+                  {showScheduleBundles ? (
                     <ScheduleBundle title={`Practice plans · ${practiceRange}`}>
                       <div className="mb-1.5 flex flex-wrap gap-3 text-[10px] font-semibold text-[var(--cc-blue)]">
                         <button
@@ -1986,290 +3107,347 @@ function ScheduleScreen() {
 }
 
 function QuizzesScreen() {
-  const { role, side } = useApp();
-  const unitLabel = side === "defense" ? "Defense" : "Offense";
+  const { role, side, setSide, roster, isArchiveMode } = useApp();
+  const unitLabel = sideLabel(side);
+  const groupSet = useQuizEditorGroupSet();
+  const isPlayer = role === "player";
+  const canStaff = canEditContent(role, isArchiveMode);
 
-  if (!canTakeQuizzes(role) && role === "parent") {
+  useEffect(() => {
+    if (!isPlayer) return;
+    const athlete = findDemoPlayerAthlete(roster);
+    if (!athlete) return;
+    const defenseGroups = new Set(["DL", "ILB", "OLB", "DB"]);
+    const next: Side = athlete.groups.some((g) =>
+      defenseGroups.has(migrateGroupAbbreviation(g)),
+    )
+      ? "defense"
+      : "offense";
+    if (side !== next) setSide(next);
+  }, [isPlayer, roster, side, setSide]);
+
+  const playerAthlete = isPlayer ? findDemoPlayerAthlete(roster) : undefined;
+  const playerGroups = playerAthlete
+    ? playerAthlete.groups.map(migrateGroupAbbreviation).join(", ")
+    : "";
+
+  // Players: accordion of weeks, own groups only — same visible weeks as Schedule
+  if (isPlayer) {
     return (
-      <Panel title={`${unitLabel} · Weekly Quizzes`}>
-        <p className="mb-4 text-sm text-[var(--cc-steel)]">
-          Completion summary only — no question content.
-        </p>
-        <div className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-4 text-sm">
-          <p className="font-semibold text-[var(--cc-navy)]">Child quiz summary</p>
-          <p className="mt-1 text-[var(--cc-steel)]">
-            Week 1 Defense Scout — Not started · Due Mon Aug 25
-          </p>
-        </div>
-      </Panel>
+      <WeekSections
+        title="My Quizzes"
+        blurb={`Quizzes assigned to your position group${playerGroups ? ` (${playerGroups})` : ""}. Open a week to take or review.`}
+      >
+        {(g) => (
+          <WeeklyQuizWeekPanel
+            game={g}
+            groupSet={groupSet}
+            myGroups={[...groupSet]}
+          />
+        )}
+      </WeekSections>
     );
   }
 
+  // Staff unit page: Schedule-style Open cards; generate stays on My Stuff
   return (
-    <WeekSections
-      title={`${unitLabel} · Weekly Quizzes`}
-      blurb="Built from that week's scout + install. Passing score default 80%."
-    >
-      {(g) => {
-        const weekQuizzes = quizzes.filter(
-          (q) => q.side === side && q.week === g.week,
-        );
-        if (weekQuizzes.length === 0) {
-          return (
-            <div className="space-y-3">
-              <p className="text-sm text-[var(--cc-steel)]">
-                No quiz assigned for Week {g.week} yet.
-              </p>
-              {canEditContent(role) ? (
-                <button
-                  type="button"
-                  className="rounded-lg bg-[var(--cc-blue)] px-3 py-2 text-sm font-semibold text-white"
-                >
-                  Create quiz
-                </button>
-              ) : null}
-            </div>
-          );
-        }
-        return (
-          <div className="space-y-3">
-            {weekQuizzes.map((q) => (
-              <div
-                key={q.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--cc-line)] p-4"
-              >
-                <div>
-                  <p className="font-semibold text-[var(--cc-navy)]">{q.title}</p>
-                  <p className="mt-1 text-sm text-[var(--cc-steel)]">
-                    Due {q.due} · Groups: {q.assignedGroups.join(", ")} · Pass{" "}
-                    {q.passingScore}%
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Chip>{q.status}</Chip>
-                  {canEditContent(role) ? (
-                    <button
-                      type="button"
-                      className="rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm font-semibold"
-                    >
-                      Edit
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="rounded-lg bg-[var(--cc-blue)] px-3 py-2 text-sm font-semibold text-white"
-                  >
-                    {role === "player" ? "Take quiz" : "Preview"}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      }}
-    </WeekSections>
+    <div className="space-y-4">
+      {canStaff && (role === "admin" || role === "coordinator") ? (
+        <div className="flex flex-wrap justify-end gap-2">
+          <ImportFromArchiveButton
+            presetCategories={["quizzes"]}
+            sideScope="current"
+            label="Add quizzes from archive"
+          />
+        </div>
+      ) : null}
+      <WeekSections
+        title={`${unitLabel} · Weekly Quizzes`}
+        blurb={`Open a week for unit quiz scores and assignments. Filter by position inside each week. Generate quizzes in My Stuff → Weekly Quizzes.`}
+      >
+        {(g) => (
+          <WeeklyQuizWeekPanel
+            game={g}
+            groupSet={groupSet}
+            mode="unit"
+            unitScores={canStaff}
+          />
+        )}
+      </WeekSections>
+    </div>
   );
+}
+
+function coachesForPositionType(type: PositionType) {
+  if (type === "Offense") return coachesOnSide("offense");
+  if (type === "Defense") return coachesOnSide("defense");
+  return coachStaff.filter((c) => c.role === "coach");
 }
 
 function GroupsScreen() {
   const {
-    side,
     role,
     coachAssignments,
     setCoachOnGroup,
     roster,
     positionGroups,
+    addPositionGroup,
+    updatePositionGroup,
+    removePositionGroup,
   } = useApp();
-  const groups = positionGroups.filter((p) =>
-    side === "defense" ? p.type === "Defense" : p.type === "Offense",
-  );
   const canAssign = canAssignCoachGroups(role);
-  const sideCoaches = coachesOnSide(side);
+  const canEdit = canEditPositionGroups(role);
+  const [editing, setEditing] = useState(false);
 
   return (
     <div className="space-y-4">
-      <Panel title="Program · Groups">
+      <Panel
+        title="Program · Groups"
+        action={
+          canEdit ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {editing ? (
+                <button
+                  type="button"
+                  onClick={addPositionGroup}
+                  className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white"
+                >
+                  Add position
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setEditing((v) => !v)}
+                className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+              >
+                {editing ? "Done" : "Edit"}
+              </button>
+            </div>
+          ) : null
+        }
+      >
         <p className="mb-4 text-sm text-[var(--cc-steel)]">
-          Players assigned here control who shows up when filling a depth-chart
-          square for that position. Switch Offense / Defense in the header to
-          view each side.
+          One group per position, organized by position type. Players assigned
+          here control who shows up when filling a depth-chart square for that
+          position.
+          {canEdit
+            ? " Use Edit to add, rename, retype, or delete positions."
+            : ""}
           {canAssign
             ? " Admins and coordinators assign coaches to each group below."
             : ""}
         </p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {groups.map((pos) => {
-            const g = pos.abbreviation;
-            const inGroup = roster
-              .filter((a) => a.groups.includes(g))
-              .slice()
-              .sort(compareByLastName);
-            const assignedIds = coachAssignments[g] ?? [];
-            const assignedCoaches = assignedIds
-              .map((id) => coachStaff.find((c) => c.id === id))
-              .filter(Boolean);
+        {positionGroups.length === 0 ? (
+          <p className="text-sm text-[var(--cc-steel)]">
+            No positions yet
+            {canEdit
+              ? editing
+                ? " — click Add position."
+                : " — click Edit, then Add position."
+              : "."}
+          </p>
+        ) : (
+          <div className="space-y-8">
+            {positionTypes.map((type) => {
+              const groups = positionGroups.filter((p) => p.type === type);
+              if (groups.length === 0) return null;
+              const typeCoaches = coachesForPositionType(type);
 
-            return (
-              <div
-                key={pos.id}
-                className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-4"
-              >
-                <p className="font-[family-name:var(--font-display)] text-2xl text-[var(--cc-blue)]">
-                  {pos.name}
-                </p>
-                <p className="text-sm font-semibold text-[var(--cc-navy)]">
-                  {g}
-                </p>
-                <p className="mt-2 text-sm text-[var(--cc-steel)]">
-                  {inGroup.length} player{inGroup.length === 1 ? "" : "s"}
-                </p>
-                <ul className="mt-2 max-h-28 space-y-0.5 overflow-y-auto text-xs text-[var(--cc-navy)]">
-                  {inGroup.map((a) => (
-                    <li key={a.id}>
-                      <PlayerNameLink
-                        id={a.id}
-                        name={a.name}
-                        className="font-medium text-[var(--cc-blue)] underline-offset-2 hover:underline"
-                      />{" "}
-                      <span className="text-[var(--cc-steel)]">
-                        · {a.classYear}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+              return (
+                <section key={type}>
+                  <h3 className="mb-3 border-b border-[var(--cc-line)] pb-2 font-[family-name:var(--font-display)] text-lg tracking-wide text-[var(--cc-navy)]">
+                    {type}
+                  </h3>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {groups.map((pos) => {
+                      const g = pos.abbreviation;
+                      const inGroup = roster
+                        .filter((a) => a.groups.includes(g))
+                        .slice()
+                        .sort(compareByLastName);
+                      const assignedIds = coachAssignments[g] ?? [];
+                      const assignedCoaches = assignedIds
+                        .map((id) => coachStaff.find((c) => c.id === id))
+                        .filter(Boolean);
 
-                <div className="mt-3 border-t border-[var(--cc-line)] pt-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
-                    Coach assignment
-                  </p>
-                  {assignedCoaches.length === 0 ? (
-                    <p className="mt-1 text-xs text-[var(--cc-steel)]">
-                      No coach assigned
-                    </p>
-                  ) : (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {assignedCoaches.map((c) => (
-                        <Chip key={c!.id}>
-                          <CoachNameLink
-                            name={c!.name}
-                            className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
-                          />
-                        </Chip>
-                      ))}
-                    </div>
-                  )}
+                      return (
+                        <div
+                          key={pos.id}
+                          className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-4"
+                        >
+                          {canEdit && editing ? (
+                            <div className="space-y-3">
+                              <label className="block text-sm">
+                                <span className="font-semibold text-[var(--cc-navy)]">
+                                  Name
+                                </span>
+                                <input
+                                  value={pos.name}
+                                  onChange={(e) =>
+                                    updatePositionGroup(pos.id, {
+                                      name: e.target.value,
+                                    })
+                                  }
+                                  className="mt-1 w-full rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2"
+                                />
+                              </label>
+                              <label className="block text-sm">
+                                <span className="font-semibold text-[var(--cc-navy)]">
+                                  Abbreviation
+                                </span>
+                                <input
+                                  value={pos.abbreviation}
+                                  onChange={(e) =>
+                                    updatePositionGroup(pos.id, {
+                                      abbreviation: e.target.value,
+                                    })
+                                  }
+                                  className="mt-1 w-full rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 uppercase"
+                                />
+                              </label>
+                              <label className="block text-sm">
+                                <span className="font-semibold text-[var(--cc-navy)]">
+                                  Position type
+                                </span>
+                                <select
+                                  value={pos.type}
+                                  onChange={(e) =>
+                                    updatePositionGroup(pos.id, {
+                                      type: e.target.value as PositionType,
+                                    })
+                                  }
+                                  className="mt-1 w-full rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2"
+                                >
+                                  {positionTypes.map((t) => (
+                                    <option key={t} value={t}>
+                                      {t}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `Delete ${pos.name} (${pos.abbreviation})?`,
+                                    )
+                                  ) {
+                                    removePositionGroup(pos.id);
+                                  }
+                                }}
+                                className="rounded-md border border-red-200 px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-700 hover:bg-red-50"
+                                aria-label={`Delete ${pos.name}`}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="font-[family-name:var(--font-display)] text-2xl text-[var(--cc-blue)]">
+                                {pos.name}
+                              </p>
+                              <p className="text-sm font-semibold text-[var(--cc-navy)]">
+                                {g}
+                              </p>
+                            </>
+                          )}
+                          <p className="mt-2 text-sm text-[var(--cc-steel)]">
+                            {inGroup.length} player
+                            {inGroup.length === 1 ? "" : "s"}
+                          </p>
+                          <ul className="mt-2 max-h-28 space-y-0.5 overflow-y-auto text-xs text-[var(--cc-navy)]">
+                            {inGroup.map((a) => (
+                              <li key={a.id}>
+                                <PlayerNameLink
+                                  id={a.id}
+                                  name={athleteLastFirst(a)}
+                                  className="font-medium text-[var(--cc-blue)] underline-offset-2 hover:underline"
+                                />{" "}
+                                <span className="text-[var(--cc-steel)]">
+                                  · {abbreviateGrade(a.classYear)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
 
-                  {canAssign ? (
-                    <div className="mt-2 space-y-1.5">
-                      {sideCoaches.map((coach) => {
-                        const checked = assignedIds.includes(coach.id);
-                        return (
-                          <label
-                            key={coach.id}
-                            className="flex cursor-pointer items-center gap-2 text-sm text-[var(--cc-navy)]"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) =>
-                                setCoachOnGroup(
-                                  g,
-                                  coach.id,
-                                  e.target.checked,
-                                )
-                              }
-                              className="h-4 w-4 accent-[var(--cc-blue)]"
-                            />
-                            {coach.name}
-                          </label>
-                        );
-                      })}
-                      {sideCoaches.length === 0 ? (
-                        <p className="text-xs text-[var(--cc-steel)]">
-                          No coaches on this side yet.
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                          <div className="mt-3 border-t border-[var(--cc-line)] pt-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
+                              Coach assignment
+                            </p>
+                            {assignedCoaches.length === 0 ? (
+                              <p className="mt-1 text-xs text-[var(--cc-steel)]">
+                                No coach assigned
+                              </p>
+                            ) : (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {assignedCoaches.map((c) => (
+                                  <Chip key={c!.id}>
+                                    <CoachNameLink
+                                      id={c!.id}
+                                      name={c!.name}
+                                      className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
+                                    />
+                                  </Chip>
+                                ))}
+                              </div>
+                            )}
+
+                            {canAssign ? (
+                              <div className="mt-2 space-y-1.5">
+                                {typeCoaches.map((coach) => {
+                                  const checked = assignedIds.includes(coach.id);
+                                  return (
+                                    <label
+                                      key={coach.id}
+                                      className="flex cursor-pointer items-center gap-2 text-sm text-[var(--cc-navy)]"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(e) =>
+                                          setCoachOnGroup(
+                                            g,
+                                            coach.id,
+                                            e.target.checked,
+                                          )
+                                        }
+                                        className="h-4 w-4 accent-[var(--cc-blue)]"
+                                      />
+                                      <CoachNameLink
+                                        id={coach.id}
+                                        name={coach.name}
+                                        className="font-medium text-[var(--cc-blue)] underline-offset-2 hover:underline"
+                                      />
+                                    </label>
+                                  );
+                                })}
+                                {typeCoaches.length === 0 ? (
+                                  <p className="text-xs text-[var(--cc-steel)]">
+                                    No coaches available for this type yet.
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
       </Panel>
     </div>
   );
 }
 
 function StaffScreen() {
-  const { role, coachAssignments, coachDutiesList } = useApp();
-  if (!canSeeStaffRoom(role)) {
-    return (
-      <Panel title="Staff">
-        <p className="text-sm text-[var(--cc-steel)]">
-          Staff room is for coaches only.
-        </p>
-      </Panel>
-    );
-  }
-
-  return (
-    <Panel title="Coach responsibilities">
-      <p className="mb-4 text-sm text-[var(--cc-steel)]">
-        Season-scoped duties. Admins and coordinators manage these under{" "}
-        <span className="font-semibold">Controls → Coaches Responsibilities</span>.
-      </p>
-      <div className="space-y-3">
-        {coachDutiesList.map((d) => {
-          const staff = coachStaff.find((c) => c.name === d.coach);
-          const liveGroups = staff
-            ? Object.entries(coachAssignments)
-                .filter(([, ids]) => ids.includes(staff.id))
-                .map(([g]) => g)
-            : d.groups;
-
-          return (
-            <div
-              key={d.id}
-              className="rounded-xl border border-[var(--cc-line)] p-4"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-semibold text-[var(--cc-navy)]">{d.coach}</h3>
-                <Chip>{d.side}</Chip>
-                <Chip>
-                  {(liveGroups.length ? liveGroups : d.groups).join(", ") ||
-                    "Unassigned"}
-                </Chip>
-              </div>
-              <ul className="mt-2 space-y-1.5 text-sm text-[var(--cc-steel)]">
-                {d.duties.map((x) => (
-                  <li
-                    key={x.id}
-                    className="flex flex-wrap items-baseline justify-between gap-2"
-                  >
-                    <span>· {x.text}</span>
-                    {x.dueBy ? (
-                      <span className="text-xs font-semibold text-[var(--cc-navy)]">
-                        Due {x.dueBy}
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-              {d.notes ? (
-                <p className="mt-2 text-sm text-[var(--cc-navy)]">{d.notes}</p>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </Panel>
-  );
-}
-
-function AdminStaffScreen() {
   const {
     role,
+    coachAssignments,
     coachDutiesList,
     updateCoachDuty,
     addCoachDuty,
@@ -2277,16 +3455,17 @@ function AdminStaffScreen() {
     addCoachDutyResponsibility,
     updateCoachDutyResponsibility,
     removeCoachDutyResponsibility,
-    coachAssignments,
     setCoachOnGroup,
     positionGroups,
   } = useApp();
+  const canEdit = canAssignCoachGroups(role);
+  const [editing, setEditing] = useState(false);
 
-  if (!canAssignCoachGroups(role)) {
+  if (!canSeeStaffRoom(role)) {
     return (
-      <Panel title="Coaches Responsibilities">
+      <Panel title="Responsibilities">
         <p className="text-sm text-[var(--cc-steel)]">
-          Admins and coordinators only.
+          Staff pages are for coaches, coordinators, and admins.
         </p>
       </Panel>
     );
@@ -2304,195 +3483,2132 @@ function AdminStaffScreen() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl font-bold text-zinc-900">
-        Controls · Coaches Responsibilities
-      </h1>
       <Panel
-        title="Responsibilities & group assignments"
+        title="Coach responsibilities"
         action={
-          <button
-            type="button"
-            onClick={() => addCoachDuty()}
-            className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white"
-          >
-            + Add coach
-          </button>
+          canEdit ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {editing ? (
+                <button
+                  type="button"
+                  onClick={() => addCoachDuty()}
+                  className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white"
+                >
+                  + Add coach
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setEditing((v) => !v)}
+                className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+              >
+                {editing ? "Done" : "Edit"}
+              </button>
+            </div>
+          ) : null
         }
       >
         <p className="mb-4 text-sm text-[var(--cc-steel)]">
-          Pick a coach, assign position groups, and add responsibilities with
-          optional deadlines. This feeds My Group and depth chart ownership.
+          Season-scoped duties with optional deadlines. This feeds My Stuff →
+          Responsibilities
+          {canEdit
+            ? editing
+              ? " — pick a coach, assign position groups, and add responsibilities."
+              : " — use Edit to manage coaches, groups, and deadlines."
+            : "."}
         </p>
-        <div className="space-y-4">
-          {coachDutiesList.map((d) => {
-            const staff =
-              coachStaff.find((c) => c.name === d.coach) ??
-              coachStaff.find((c) => c.side === d.side) ??
-              null;
-            const coachId = staff?.id ?? "";
-            const sideForGroups =
-              d.side === "offense" || d.side === "defense" ? d.side : "defense";
-            const groups = positionGroups.filter((p) =>
-              sideForGroups === "defense"
-                ? p.type === "Defense"
-                : p.type === "Offense",
-            );
 
-            return (
-              <div
-                key={d.id}
-                className="space-y-3 rounded-xl border border-[var(--cc-line)] p-4"
-              >
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-sm">
-                    <span className="font-semibold text-[var(--cc-navy)]">
-                      Coach
-                    </span>
-                    <select
-                      value={coachId}
-                      onChange={(e) => selectCoach(d.id, e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
-                    >
-                      <option value="">Select coach…</option>
-                      {coachStaff.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                          {c.role === "coordinator" ? " (Coordinator)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="flex flex-wrap items-end gap-2 text-sm">
-                    <Chip>{d.side}</Chip>
-                    <Chip>{d.role}</Chip>
-                  </div>
-                </div>
+        {editing && canEdit ? (
+          <div className="space-y-4">
+            {coachDutiesList.map((d) => {
+              const staff =
+                coachStaff.find((c) => c.name === d.coach) ??
+                coachStaff.find((c) => c.side === d.side) ??
+                null;
+              const coachId = staff?.id ?? "";
+              const sideForGroups =
+                d.side === "offense" || d.side === "defense"
+                  ? d.side
+                  : "defense";
+              const groups = positionGroups.filter((p) =>
+                sideForGroups === "defense"
+                  ? p.type === "Defense"
+                  : p.type === "Offense",
+              );
 
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
-                    Position groups
-                  </p>
-                  {!coachId ? (
-                    <p className="text-xs text-[var(--cc-steel)]">
-                      Select a coach to assign groups.
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {groups.map((pos) => {
-                        const g = pos.abbreviation;
-                        const assigned = (
-                          coachAssignments[g] ?? []
-                        ).includes(coachId);
-                        return (
-                          <label
-                            key={pos.id}
-                            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm ${
-                              assigned
-                                ? "border-[var(--cc-blue)] bg-[var(--cc-blue)]/10 text-[var(--cc-navy)]"
-                                : "border-[var(--cc-line)] bg-white text-[var(--cc-navy)]"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={assigned}
-                              onChange={(e) =>
-                                setCoachOnGroup(g, coachId, e.target.checked)
-                              }
-                              className="h-4 w-4 accent-[var(--cc-blue)]"
-                            />
-                            {pos.name} ({g})
-                          </label>
-                        );
-                      })}
+              return (
+                <div
+                  key={d.id}
+                  className="space-y-3 rounded-xl border border-[var(--cc-line)] p-4"
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm">
+                      <span className="font-semibold text-[var(--cc-navy)]">
+                        Coach
+                      </span>
+                      <select
+                        value={coachId}
+                        onChange={(e) => selectCoach(d.id, e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
+                      >
+                        <option value="">Select coach…</option>
+                        {coachStaff.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                            {c.role === "coordinator" ? " (Coordinator)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex flex-wrap items-end gap-2 text-sm">
+                      <Chip>{d.side}</Chip>
+                      <Chip>{d.role}</Chip>
                     </div>
-                  )}
-                </div>
-
-                <div>
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
-                      Responsibilities
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => addCoachDutyResponsibility(d.id)}
-                      className="rounded border border-[var(--cc-line)] px-2 py-1 text-xs font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
-                    >
-                      + Add responsibility
-                    </button>
                   </div>
-                  <div className="space-y-2">
-                    {d.duties.length === 0 ? (
+
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
+                      Position groups
+                    </p>
+                    {!coachId ? (
                       <p className="text-xs text-[var(--cc-steel)]">
-                        No responsibilities yet.
+                        Select a coach to assign groups.
                       </p>
                     ) : (
-                      d.duties.map((resp) => (
-                        <div
-                          key={resp.id}
-                          className="grid gap-2 rounded-lg border border-[var(--cc-line)] bg-[var(--cc-field)]/40 p-2 sm:grid-cols-[1fr_11rem_auto]"
-                        >
-                          <input
-                            type="text"
-                            value={resp.text}
-                            onChange={(e) =>
-                              updateCoachDutyResponsibility(d.id, resp.id, {
-                                text: e.target.value,
-                              })
-                            }
-                            placeholder="Responsibility"
-                            className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm"
-                          />
-                          <input
-                            type="text"
-                            value={resp.dueBy ?? ""}
-                            onChange={(e) =>
-                              updateCoachDutyResponsibility(d.id, resp.id, {
-                                dueBy: e.target.value,
-                              })
-                            }
-                            placeholder="Deadline (optional)"
-                            className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm"
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              removeCoachDutyResponsibility(d.id, resp.id)
-                            }
-                            className="rounded border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))
+                      <div className="flex flex-wrap gap-2">
+                        {groups.map((pos) => {
+                          const g = pos.abbreviation;
+                          const assigned = (
+                            coachAssignments[g] ?? []
+                          ).includes(coachId);
+                          return (
+                            <label
+                              key={pos.id}
+                              className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm ${
+                                assigned
+                                  ? "border-[var(--cc-blue)] bg-[var(--cc-blue)]/10 text-[var(--cc-navy)]"
+                                  : "border-[var(--cc-line)] bg-white text-[var(--cc-navy)]"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={assigned}
+                                onChange={(e) =>
+                                  setCoachOnGroup(g, coachId, e.target.checked)
+                                }
+                                className="h-4 w-4 accent-[var(--cc-blue)]"
+                              />
+                              {pos.name} ({g})
+                            </label>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                </div>
 
-                <label className="block text-sm">
-                  <span className="font-semibold text-[var(--cc-navy)]">
-                    Notes
-                  </span>
-                  <input
-                    value={d.notes}
-                    onChange={(e) =>
-                      updateCoachDuty(d.id, { notes: e.target.value })
-                    }
-                    className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
-                  />
-                </label>
+                  <div>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
+                        Responsibilities
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => addCoachDutyResponsibility(d.id)}
+                        className="rounded border border-[var(--cc-line)] px-2 py-1 text-xs font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+                      >
+                        + Add responsibility
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {d.duties.length === 0 ? (
+                        <p className="text-xs text-[var(--cc-steel)]">
+                          No responsibilities yet.
+                        </p>
+                      ) : (
+                        d.duties.map((resp) => (
+                          <div
+                            key={resp.id}
+                            className="grid gap-2 rounded-lg border border-[var(--cc-line)] bg-[var(--cc-field)]/40 p-2 sm:grid-cols-[1fr_11rem_auto]"
+                          >
+                            <input
+                              type="text"
+                              value={resp.text}
+                              onChange={(e) =>
+                                updateCoachDutyResponsibility(d.id, resp.id, {
+                                  text: e.target.value,
+                                })
+                              }
+                              placeholder="Responsibility"
+                              className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm"
+                            />
+                            <input
+                              type="text"
+                              value={resp.dueBy ?? ""}
+                              onChange={(e) =>
+                                updateCoachDutyResponsibility(d.id, resp.id, {
+                                  dueBy: e.target.value,
+                                })
+                              }
+                              placeholder="Deadline (optional)"
+                              className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeCoachDutyResponsibility(d.id, resp.id)
+                              }
+                              className="rounded border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <label className="block text-sm">
+                    <span className="font-semibold text-[var(--cc-navy)]">
+                      Notes
+                    </span>
+                    <input
+                      value={d.notes}
+                      onChange={(e) =>
+                        updateCoachDuty(d.id, { notes: e.target.value })
+                      }
+                      className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeCoachDuty(d.id)}
+                    className="rounded border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                  >
+                    Remove coach card
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {coachDutiesList.length === 0 ? (
+              <p className="text-sm text-[var(--cc-steel)]">
+                No responsibilities yet
+                {canEdit ? " — click Edit, then Add coach." : "."}
+              </p>
+            ) : (
+              coachDutiesList.map((d) => {
+                const staff = coachStaff.find((c) => c.name === d.coach);
+                const liveGroups = staff
+                  ? Object.entries(coachAssignments)
+                      .filter(([, ids]) => ids.includes(staff.id))
+                      .map(([g]) => g)
+                  : d.groups;
+
+                return (
+                  <div
+                    key={d.id}
+                    className="rounded-xl border border-[var(--cc-line)] p-4"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold text-[var(--cc-navy)]">
+                        <CoachNameLink
+                          id={staff?.id}
+                          name={d.coach}
+                          className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
+                        />
+                      </h3>
+                      <Chip>{d.side}</Chip>
+                      <Chip>
+                        {(liveGroups.length ? liveGroups : d.groups).join(
+                          ", ",
+                        ) || "Unassigned"}
+                      </Chip>
+                    </div>
+                    <ul className="mt-2 space-y-1.5 text-sm text-[var(--cc-steel)]">
+                      {d.duties.map((x) => (
+                        <li
+                          key={x.id}
+                          className="flex flex-wrap items-baseline justify-between gap-2"
+                        >
+                          <span>· {x.text}</span>
+                          {x.dueBy ? (
+                            <span className="text-xs font-semibold text-[var(--cc-navy)]">
+                              Due {x.dueBy}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                    {d.notes ? (
+                      <p className="mt-2 text-sm text-[var(--cc-navy)]">
+                        {d.notes}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function StaffResourceScreen({
+  title,
+  blurb,
+}: {
+  title: string;
+  blurb: string;
+}) {
+  const { role, isArchiveMode } = useApp();
+  const canEdit = canEditContent(role, isArchiveMode);
+  const [fileName, setFileName] = useState<string | null>(null);
+
+  if (!canSeeStaffRoom(role)) {
+    return (
+      <Panel title={title}>
+        <p className="text-sm text-[var(--cc-steel)]">
+          Staff pages are for coaches, coordinators, and admins.
+        </p>
+      </Panel>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Panel title={`Staff · ${title}`}>
+        <p className="mb-4 text-sm text-[var(--cc-steel)]">{blurb}</p>
+        <FileSlot
+          label={`${title} file`}
+          fileName={fileName}
+          canEdit={canEdit}
+          onPick={setFileName}
+        />
+      </Panel>
+    </div>
+  );
+}
+
+const UNIT_RESOURCE_ACCEPT =
+  ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif,.txt,.csv,.rtf";
+
+function formatResourceBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function resourceIconLabel(mimeType: string, name: string) {
+  const lower = name.toLowerCase();
+  if (mimeType.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/.test(lower))
+    return "IMG";
+  if (mimeType.includes("pdf") || lower.endsWith(".pdf")) return "PDF";
+  if (/\.(docx?|rtf)$/.test(lower) || mimeType.includes("word")) return "DOC";
+  if (/\.(xlsx?|csv)$/.test(lower) || mimeType.includes("sheet")) return "XLS";
+  if (/\.(pptx?)$/.test(lower) || mimeType.includes("presentation"))
+    return "PPT";
+  return "FILE";
+}
+
+function UnitResourcesScreen() {
+  const {
+    role,
+    side,
+    unitResources,
+    addUnitResource,
+    removeUnitResource,
+    teamMembers,
+    isArchiveMode,
+  } = useApp();
+  const canEdit = canEditContent(role, isArchiveMode);
+  const unitLabel = sideLabel(side);
+  const files = isArchiveMode ? [] : unitResources[side];
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [view, setView] = useState<"list" | "grid">("list");
+  const [busy, setBusy] = useState(false);
+
+  async function onFilesChosen(e: ChangeEvent<HTMLInputElement>) {
+    const list = e.target.files;
+    if (!list?.length || !canEdit) return;
+    setBusy(true);
+    const uploader =
+      findDemoMember(teamMembers, role)?.name ?? roleLabels[role];
+    try {
+      for (const file of Array.from(list)) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result ?? ""));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        });
+        addUnitResource(side, {
+          name: file.name,
+          size: file.size,
+          mimeType: file.type || "application/octet-stream",
+          dataUrl,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: uploader,
+        });
+      }
+    } finally {
+      setBusy(false);
+      e.target.value = "";
+    }
+  }
+
+  function openFile(dataUrl: string, name: string) {
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.download = name;
+    a.click();
+  }
+
+  return (
+    <div className="space-y-4">
+      <Panel
+        title={`${unitLabel} · Resources`}
+        action={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex rounded-lg border border-[var(--cc-line)] bg-[var(--cc-field)] p-0.5">
+              <button
+                type="button"
+                onClick={() => setView("list")}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                  view === "list"
+                    ? "bg-white text-[var(--cc-navy)] shadow-sm"
+                    : "text-[var(--cc-steel)]"
+                }`}
+              >
+                List
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("grid")}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                  view === "grid"
+                    ? "bg-white text-[var(--cc-navy)] shadow-sm"
+                    : "text-[var(--cc-steel)]"
+                }`}
+              >
+                Grid
+              </button>
+            </div>
+            {canEdit ? (
+              <>
+                <input
+                  ref={inputRef}
+                  type="file"
+                  multiple
+                  accept={UNIT_RESOURCE_ACCEPT}
+                  className="hidden"
+                  onChange={(e) => void onFilesChosen(e)}
+                />
                 <button
                   type="button"
-                  onClick={() => removeCoachDuty(d.id)}
-                  className="rounded border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                  disabled={busy}
+                  onClick={() => inputRef.current?.click()}
+                  className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
                 >
-                  Remove coach card
+                  {busy ? "Uploading…" : "Upload"}
                 </button>
-              </div>
+              </>
+            ) : null}
+          </div>
+        }
+      >
+        <p className="mb-4 text-sm text-[var(--cc-steel)]">
+          Shared files for {unitLabel.toLowerCase()} only — separate from other
+          units. Upload PDFs, images, and docs; open or download anytime this
+          session.
+        </p>
+
+        {files.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-[var(--cc-line)] bg-[var(--cc-field)]/50 px-4 py-10 text-center">
+            <p className="font-[family-name:var(--font-display)] text-lg text-[var(--cc-navy)]">
+              No files yet
+            </p>
+            <p className="mt-1 text-sm text-[var(--cc-steel)]">
+              {canEdit
+                ? "Upload a file to start this unit’s drive."
+                : "Coaches can upload resources for this unit."}
+            </p>
+            {canEdit ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => inputRef.current?.click()}
+                className="mt-4 rounded-lg border border-[var(--cc-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+              >
+                Upload files
+              </button>
+            ) : null}
+          </div>
+        ) : view === "list" ? (
+          <div className="overflow-x-auto rounded-xl border border-[var(--cc-line)]">
+            <table className="w-full min-w-[36rem] text-left text-sm">
+              <thead className="bg-[var(--cc-field)] text-xs font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
+                <tr>
+                  <th className="px-3 py-2.5">Name</th>
+                  <th className="px-3 py-2.5">Size</th>
+                  <th className="px-3 py-2.5">Uploaded</th>
+                  <th className="px-3 py-2.5">By</th>
+                  <th className="px-3 py-2.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {files.map((f) => (
+                  <tr
+                    key={f.id}
+                    className="border-t border-[var(--cc-line)] hover:bg-[var(--cc-field)]/40"
+                  >
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-7 w-9 items-center justify-center rounded bg-[var(--cc-blue)]/10 text-[10px] font-bold text-[var(--cc-blue)]">
+                          {resourceIconLabel(f.mimeType, f.name)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openFile(f.dataUrl, f.name)}
+                          className="font-semibold text-[var(--cc-navy)] hover:underline"
+                        >
+                          {f.name}
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-[var(--cc-steel)]">
+                      {formatResourceBytes(f.size)}
+                    </td>
+                    <td className="px-3 py-2.5 text-[var(--cc-steel)]">
+                      {new Date(f.uploadedAt).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                    <td className="px-3 py-2.5 text-[var(--cc-steel)]">
+                      {f.uploadedBy}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openFile(f.dataUrl, f.name)}
+                          className="text-xs font-semibold text-[var(--cc-blue)] hover:underline"
+                        >
+                          Open
+                        </button>
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                window.confirm(`Delete “${f.name}” from ${unitLabel}?`)
+                              ) {
+                                removeUnitResource(side, f.id);
+                              }
+                            }}
+                            className="text-xs font-semibold text-red-700 hover:underline"
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {files.map((f) => (
+              <li
+                key={f.id}
+                className="flex flex-col rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)]/40 p-3"
+              >
+                <div className="mb-3 flex h-24 items-center justify-center rounded-lg bg-white border border-[var(--cc-line)]">
+                  {f.mimeType.startsWith("image/") ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={f.dataUrl}
+                      alt=""
+                      className="max-h-full max-w-full object-contain p-2"
+                    />
+                  ) : (
+                    <span className="font-[family-name:var(--font-display)] text-2xl text-[var(--cc-blue)]">
+                      {resourceIconLabel(f.mimeType, f.name)}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openFile(f.dataUrl, f.name)}
+                  className="truncate text-left text-sm font-semibold text-[var(--cc-navy)] hover:underline"
+                  title={f.name}
+                >
+                  {f.name}
+                </button>
+                <p className="mt-1 text-xs text-[var(--cc-steel)]">
+                  {formatResourceBytes(f.size)} · {f.uploadedBy}
+                </p>
+                <p className="text-xs text-[var(--cc-steel)]">
+                  {new Date(f.uploadedAt).toLocaleDateString()}
+                </p>
+                <div className="mt-auto flex gap-3 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => openFile(f.dataUrl, f.name)}
+                    className="text-xs font-semibold text-[var(--cc-blue)] hover:underline"
+                  >
+                    Open
+                  </button>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          window.confirm(`Delete “${f.name}” from ${unitLabel}?`)
+                        ) {
+                          removeUnitResource(side, f.id);
+                        }
+                      }}
+                      className="text-xs font-semibold text-red-700 hover:underline"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function athleteMatchesRecruitingQuery(
+  a: Athlete,
+  query: string,
+  columns: RecruitingSheetColumn[],
+) {
+  if (!query.trim()) return true;
+  const q = query.trim().toLowerCase();
+  const haystacks: string[] = [
+    athleteLastFirst(a),
+    a.firstName ?? "",
+    a.lastName ?? "",
+    a.name ?? "",
+    a.groups?.join(" ") ?? "",
+    a.groups?.join(", ") ?? "",
+    a.classYear ?? "",
+    gradClassLabels[a.classYear] ?? "",
+    abbreviateGrade(a.classYear),
+  ];
+  for (const col of columns) {
+    if (
+      col.key === "name" ||
+      col.key === "classYear" ||
+      col.key === "position"
+    ) {
+      continue;
+    }
+    haystacks.push(String(recruitingStoredValue(a, col.key) ?? ""));
+  }
+  return haystacks.some((v) => v.toLowerCase().includes(q));
+}
+
+function StaffRecruitingScreen() {
+  const {
+    role,
+    roster,
+    updateAthlete,
+    branding,
+    season,
+    positionGroups,
+    recruitingSheetColumns,
+    addRecruitingSheetColumn,
+    renameRecruitingSheetColumn,
+    removeRecruitingSheetColumn,
+    isArchiveMode,
+  } = useApp();
+  const canEdit = canEditRoster(role) && canEditContent(role, isArchiveMode);
+  const [query, setQuery] = useState("");
+  const [gradeFilter, setGradeFilter] = useState<string>("all");
+  const [positionFilter, setPositionFilter] = useState<string[]>([]);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [editingColumns, setEditingColumns] = useState(false);
+  const [newColumnLabel, setNewColumnLabel] = useState("");
+  /** Shared screen + print column visibility (unchecked = hidden until rechecked). */
+  const [visibleFields, setVisibleFields] = useState<Record<string, boolean>>(
+    () =>
+      Object.fromEntries(recruitingSheetColumns.map((c) => [c.key, true])),
+  );
+
+  useEffect(() => {
+    setVisibleFields((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const col of recruitingSheetColumns) {
+        if (!(col.key in next)) {
+          next[col.key] = true;
+          changed = true;
+        }
+      }
+      for (const key of Object.keys(next)) {
+        if (!recruitingSheetColumns.some((c) => c.key === key)) {
+          delete next[key];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [recruitingSheetColumns]);
+
+  if (!canSeeStaffRoom(role)) {
+    return (
+      <Panel title="Recruiting">
+        <p className="text-sm text-[var(--cc-steel)]">
+          Staff pages are for coaches, coordinators, and admins.
+        </p>
+      </Panel>
+    );
+  }
+
+  const athletes = roster
+    .filter((a) => (a.personnelType ?? "athlete") === "athlete")
+    .filter((a) =>
+      gradeFilter === "all" ? true : a.classYear === gradeFilter,
+    )
+    .filter((a) =>
+      positionFilter.length === 0
+        ? true
+        : a.groups.some((g) => positionFilter.includes(g)),
+    )
+    .filter((a) =>
+      athleteMatchesRecruitingQuery(a, query, recruitingSheetColumns),
+    )
+    .slice()
+    .sort((a, b) => {
+      const cmp = compareByLastName(a, b);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+  const visibleColumns = recruitingSheetColumns.filter(
+    (col) => visibleFields[col.key],
+  );
+
+  function toggleColumn(key: string) {
+    setVisibleFields((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function setAllColumns(selected: boolean) {
+    setVisibleFields(
+      Object.fromEntries(
+        recruitingSheetColumns.map((c) => [c.key, selected]),
+      ),
+    );
+  }
+
+  function submitNewColumn(e: FormEvent) {
+    e.preventDefault();
+    if (!addRecruitingSheetColumn(newColumnLabel)) return;
+    setNewColumnLabel("");
+  }
+
+  return (
+    <div className="recruiting-print-root">
+      <Panel
+        title="Staff · Recruiting"
+        action={
+          <div className="depth-print-hide flex flex-wrap items-center justify-end gap-2">
+            {canEdit && role === "admin" ? (
+              <ImportFromArchiveButton
+                presetCategories={["recruitingFills"]}
+                sideScope="all"
+                label="Add from archive"
+              />
+            ) : null}
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => setEditingColumns((v) => !v)}
+                className="rounded bg-[var(--cc-blue)] px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90"
+              >
+                {editingColumns ? "Done" : "Edit columns"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              disabled={visibleColumns.length === 0}
+              className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)] disabled:opacity-50"
+            >
+              Print
+            </button>
+            <span className="text-xs font-semibold text-[var(--cc-steel)]">
+              {athletes.length} prospect{athletes.length === 1 ? "" : "s"}
+            </span>
+          </div>
+        }
+      >
+        <div className="mb-2 hidden print:block">
+          <p className="text-lg font-bold text-black">
+            {branding.name} · Recruiting · Season {season}
+          </p>
+          <p className="text-xs text-zinc-600">
+            {athletes.length} prospect{athletes.length === 1 ? "" : "s"}
+            {gradeFilter !== "all"
+              ? ` · ${gradClassLabels[gradeFilter as GradClass] ?? gradeFilter}`
+              : ""}
+            {positionFilter.length > 0
+              ? ` · ${positionFilter.join(", ")}`
+              : ""}
+            {query.trim() ? ` · Search: “${query.trim()}”` : ""}
+          </p>
+        </div>
+
+        <p className="depth-print-hide mb-3 text-sm text-[var(--cc-steel)]">
+          Recruiting board for athletes. Names show as Last, First. Edit cells
+          here or on the player profile — same roster data.
+        </p>
+
+        {canEdit && editingColumns ? (
+          <div className="depth-print-hide mb-3 rounded-lg border border-[var(--cc-line)] bg-[var(--cc-field)]/40 p-3">
+            <p className="mb-2 text-xs font-semibold text-[var(--cc-navy)]">
+              Recruiting columns — rename, add, or delete. Changes apply to all
+              player profiles. Name cannot be deleted.
+            </p>
+            <ul className="space-y-1.5">
+              {recruitingSheetColumns.map((col) => (
+                <li
+                  key={col.key}
+                  className="flex flex-wrap items-center gap-1.5"
+                >
+                  <input
+                    value={col.label}
+                    onChange={(e) =>
+                      renameRecruitingSheetColumn(col.key, e.target.value)
+                    }
+                    onBlur={(e) => {
+                      const trimmed = e.target.value.trim();
+                      renameRecruitingSheetColumn(
+                        col.key,
+                        trimmed || "Untitled column",
+                      );
+                    }}
+                    className="min-w-[10rem] flex-1 rounded border border-[var(--cc-line)] bg-white px-2 py-1 text-xs text-[var(--cc-navy)]"
+                    aria-label={`Rename ${col.label}`}
+                  />
+                  {col.key === "name" ? (
+                    <span className="px-2 py-1 text-[11px] font-semibold text-[var(--cc-steel)]">
+                      Required
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => removeRecruitingSheetColumn(col.key)}
+                      className="rounded border border-[var(--cc-line)] px-2 py-1 text-xs font-semibold text-[var(--cc-navy)] hover:bg-white"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {recruitingSheetColumns.length === 0 ? (
+              <p className="mt-2 text-xs text-[var(--cc-steel)]">
+                No columns yet. Add one below.
+              </p>
+            ) : null}
+            <form
+              onSubmit={submitNewColumn}
+              className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-[var(--cc-line)] pt-2"
+            >
+              <input
+                value={newColumnLabel}
+                onChange={(e) => setNewColumnLabel(e.target.value)}
+                placeholder="New column label…"
+                className="min-w-[10rem] flex-1 rounded border border-[var(--cc-line)] bg-white px-2 py-1 text-xs text-[var(--cc-navy)]"
+                aria-label="New recruiting column label"
+              />
+              <button
+                type="submit"
+                disabled={!newColumnLabel.trim()}
+                className="rounded bg-[var(--cc-blue)] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                Add column
+              </button>
+            </form>
+          </div>
+        ) : null}
+
+        <div className="depth-print-hide mb-3 flex flex-wrap gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search all recruiting fields…"
+            className="min-w-[14rem] flex-1 rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm"
+          />
+          <div className="min-w-[11rem]">
+            <MultiSelectDropdown
+              allLabel="All positions"
+              selected={positionFilter}
+              onChange={setPositionFilter}
+              options={positionGroups.map((pos) => ({
+                value: pos.abbreviation,
+                label: `${pos.name} (${pos.abbreviation})`,
+              }))}
+            />
+          </div>
+          <select
+            value={gradeFilter}
+            onChange={(e) => setGradeFilter(e.target.value)}
+            className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm font-medium text-[var(--cc-navy)]"
+          >
+            <option value="all">All classifications</option>
+            {inventoryGradeOrder.map((g) => (
+              <option key={g} value={g}>
+                {gradClassLabels[g]}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+            className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+          >
+            Name {sortDir === "asc" ? "↑" : "↓"}
+          </button>
+        </div>
+
+        <div className="depth-print-hide mb-3 rounded-lg border border-[var(--cc-line)] bg-[var(--cc-field)]/40 p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-[var(--cc-navy)]">
+              Columns — choose which fields appear on the sheet and printout
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setAllColumns(true)}
+                className="rounded border border-[var(--cc-line)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllColumns(false)}
+                className="rounded border border-[var(--cc-line)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+            {recruitingSheetColumns.map((col) => (
+              <label
+                key={col.key}
+                className="inline-flex items-center gap-1.5 text-xs text-[var(--cc-navy)]"
+              >
+                <input
+                  type="checkbox"
+                  checked={visibleFields[col.key] ?? false}
+                  onChange={() => toggleColumn(col.key)}
+                  className="rounded border-[var(--cc-line)]"
+                />
+                {col.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="depth-print-hide overflow-x-auto rounded-lg border border-[var(--cc-line)]">
+          {visibleColumns.length === 0 ? (
+            <p className="px-3 py-6 text-center text-sm text-[var(--cc-steel)]">
+              No columns selected. Check a field above to show it on the sheet.
+            </p>
+          ) : (
+            <table className="w-max border-collapse text-left text-sm">
+              <thead>
+                <tr className="bg-[var(--cc-navy)] text-white">
+                  {visibleColumns.map((col) => (
+                    <th
+                      key={col.key}
+                      className={`${
+                        col.key === "name"
+                          ? "sticky left-0 z-10 bg-[var(--cc-navy)]"
+                          : ""
+                      } whitespace-nowrap px-2 py-2 text-xs font-semibold`}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {athletes.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={visibleColumns.length}
+                      className="px-3 py-6 text-center text-[var(--cc-steel)]"
+                    >
+                      No athletes match this filter.
+                    </td>
+                  </tr>
+                ) : (
+                  athletes.map((a, i) => {
+                    const displayName = athleteLastFirst(a);
+                    return (
+                      <tr
+                        key={a.id}
+                        className={
+                          i % 2 === 0 ? "bg-white" : "bg-[var(--cc-field)]/50"
+                        }
+                      >
+                        {visibleColumns.map((col) => {
+                          if (col.key === "name") {
+                            return (
+                              <td
+                                key={col.key}
+                                className="sticky left-0 z-10 whitespace-nowrap border-t border-[var(--cc-line)] bg-inherit px-2 py-1 font-semibold text-[var(--cc-navy)]"
+                              >
+                                <PlayerNameLink
+                                  id={a.id}
+                                  name={displayName}
+                                  className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
+                                />
+                              </td>
+                            );
+                          }
+                          if (isRecruitingStructuralKey(col.key)) {
+                            return (
+                              <td
+                                key={col.key}
+                                className="whitespace-nowrap border-t border-[var(--cc-line)] px-2 py-1 text-[var(--cc-steel)]"
+                              >
+                                {recruitingStoredValue(a, col.key)}
+                              </td>
+                            );
+                          }
+                          const value = recruitingStoredValue(a, col.key);
+                          const inputWidth = col.inputWidth ?? "w-28";
+                          if (col.key === "hudlLink" && !canEdit && value) {
+                            return (
+                              <td
+                                key={col.key}
+                                className="max-w-[12rem] truncate border-t border-[var(--cc-line)] px-2 py-1"
+                              >
+                                <a
+                                  href={value}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-medium text-[var(--cc-blue)] underline-offset-2 hover:underline"
+                                >
+                                  HUDL
+                                </a>
+                              </td>
+                            );
+                          }
+                          return (
+                            <td
+                              key={col.key}
+                              className="whitespace-nowrap border-t border-[var(--cc-line)] px-1 py-0.5"
+                            >
+                              {canEdit ? (
+                                <input
+                                  value={value}
+                                  onChange={(e) =>
+                                    updateAthlete(
+                                      a.id,
+                                      recruitingValuePatch(
+                                        col.key,
+                                        e.target.value,
+                                      ),
+                                    )
+                                  }
+                                  className={`${inputWidth} rounded border border-[var(--cc-line)] bg-white px-1 py-0.5 text-xs text-[var(--cc-navy)]`}
+                                  aria-label={`${displayName} ${col.label}`}
+                                />
+                              ) : (
+                                <span className="px-1 text-xs text-[var(--cc-navy)]">
+                                  {value || "—"}
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="hidden print:block">
+          {visibleColumns.length === 0 ? (
+            <p className="text-sm text-zinc-600">No columns selected.</p>
+          ) : (
+            <table className="w-full border-collapse text-left text-xs">
+              <thead>
+                <tr className="bg-zinc-100">
+                  {visibleColumns.map((col) => (
+                    <th
+                      key={col.key}
+                      className="border border-black px-1.5 py-1 font-semibold whitespace-nowrap"
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {athletes.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={visibleColumns.length}
+                      className="border border-black px-2 py-4 text-center text-zinc-600"
+                    >
+                      No athletes match this filter.
+                    </td>
+                  </tr>
+                ) : (
+                  athletes.map((a) => (
+                    <tr key={a.id}>
+                      {visibleColumns.map((col) => {
+                        const raw = recruitingStoredValue(a, col.key);
+                        const text =
+                          raw === "" || raw === "—" ? "—" : String(raw);
+                        return (
+                          <td
+                            key={col.key}
+                            className="border border-black px-1.5 py-1 align-top"
+                          >
+                            {text}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+const inventoryGradeOrder: GradClass[] = [
+  "senior",
+  "junior",
+  "sophomore",
+  "freshman",
+];
+
+function athleteLastFirst(a: Athlete) {
+  const last = a.lastName?.trim() || "";
+  const first = a.firstName?.trim() || "";
+  if (last && first) return `${last}, ${first}`;
+  return a.name;
+}
+
+type StockInventoryRow = {
+  id: string;
+  itemName: string;
+  size: string;
+  quantityOnHand: string;
+  conditionNew: string;
+  conditionGood: string;
+  conditionFair: string;
+  conditionPoor: string;
+  /** Selected need replaced: yes | no | "" */
+  needReplaced: "" | "yes" | "no";
+  replacementNumber: string;
+  notes: string;
+};
+
+const inventorySizeOptions = [
+  "",
+  "One size",
+  "XS",
+  "S",
+  "M",
+  "L",
+  "XL",
+  "2XL",
+  "3XL",
+  "Youth S",
+  "Youth M",
+  "Youth L",
+  "Youth XL",
+  "7",
+  "8",
+  "9",
+  "10",
+  "11",
+  "12",
+  "13",
+  "14",
+  "Other",
+];
+
+const seedStockInventory: StockInventoryRow[] = [
+  {
+    id: "s1-s",
+    itemName: "Helmets",
+    size: "S",
+    quantityOnHand: "10",
+    conditionNew: "3",
+    conditionGood: "5",
+    conditionFair: "2",
+    conditionPoor: "0",
+    needReplaced: "no",
+    replacementNumber: "",
+    notes: "",
+  },
+  {
+    id: "s1-m",
+    itemName: "Helmets",
+    size: "M",
+    quantityOnHand: "18",
+    conditionNew: "4",
+    conditionGood: "10",
+    conditionFair: "3",
+    conditionPoor: "1",
+    needReplaced: "no",
+    replacementNumber: "",
+    notes: "",
+  },
+  {
+    id: "s1-l",
+    itemName: "Helmets",
+    size: "L",
+    quantityOnHand: "16",
+    conditionNew: "4",
+    conditionGood: "9",
+    conditionFair: "2",
+    conditionPoor: "1",
+    needReplaced: "no",
+    replacementNumber: "",
+    notes: "",
+  },
+  {
+    id: "s1-xl",
+    itemName: "Helmets",
+    size: "XL",
+    quantityOnHand: "8",
+    conditionNew: "2",
+    conditionGood: "4",
+    conditionFair: "2",
+    conditionPoor: "0",
+    needReplaced: "no",
+    replacementNumber: "",
+    notes: "",
+  },
+  {
+    id: "s2",
+    itemName: "Shoulder pads",
+    size: "L",
+    quantityOnHand: "40",
+    conditionNew: "5",
+    conditionGood: "20",
+    conditionFair: "10",
+    conditionPoor: "5",
+    needReplaced: "yes",
+    replacementNumber: "PO-1042",
+    notes: "Order large sizes",
+  },
+  {
+    id: "s2-m",
+    itemName: "Shoulder pads",
+    size: "M",
+    quantityOnHand: "22",
+    conditionNew: "6",
+    conditionGood: "12",
+    conditionFair: "3",
+    conditionPoor: "1",
+    needReplaced: "no",
+    replacementNumber: "",
+    notes: "",
+  },
+  {
+    id: "s3",
+    itemName: "Game jerseys",
+    size: "L",
+    quantityOnHand: "55",
+    conditionNew: "40",
+    conditionGood: "15",
+    conditionFair: "0",
+    conditionPoor: "0",
+    needReplaced: "no",
+    replacementNumber: "",
+    notes: "Home white",
+  },
+  {
+    id: "s4",
+    itemName: "Practice jerseys",
+    size: "XL",
+    quantityOnHand: "60",
+    conditionNew: "10",
+    conditionGood: "35",
+    conditionFair: "12",
+    conditionPoor: "3",
+    needReplaced: "no",
+    replacementNumber: "",
+    notes: "",
+  },
+  {
+    id: "s5",
+    itemName: "Football pants",
+    size: "L",
+    quantityOnHand: "45",
+    conditionNew: "8",
+    conditionGood: "25",
+    conditionFair: "10",
+    conditionPoor: "2",
+    needReplaced: "no",
+    replacementNumber: "",
+    notes: "",
+  },
+  {
+    id: "s6",
+    itemName: "Cleats",
+    size: "11",
+    quantityOnHand: "20",
+    conditionNew: "0",
+    conditionGood: "4",
+    conditionFair: "8",
+    conditionPoor: "8",
+    needReplaced: "yes",
+    replacementNumber: "",
+    notes: "Need sizes 10–12",
+  },
+];
+
+function emptyStockRow(): StockInventoryRow {
+  return {
+    id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    itemName: "",
+    size: "",
+    quantityOnHand: "",
+    conditionNew: "",
+    conditionGood: "",
+    conditionFair: "",
+    conditionPoor: "",
+    needReplaced: "",
+    replacementNumber: "",
+    notes: "",
+  };
+}
+
+function StaffIssuedEquipmentScreen() {
+  const { role } = useApp();
+
+  if (!canSeeStaffRoom(role)) {
+    return (
+      <Panel title="Issued Equipment">
+        <p className="text-sm text-[var(--cc-steel)]">
+          Staff pages are for coaches, coordinators, and admins.
+        </p>
+      </Panel>
+    );
+  }
+
+  return <IssuedEquipmentSheet />;
+}
+
+function StaffStockInventoryScreen() {
+  const { role } = useApp();
+
+  if (!canSeeStaffRoom(role)) {
+    return (
+      <Panel title="Inventory">
+        <p className="text-sm text-[var(--cc-steel)]">
+          Staff pages are for coaches, coordinators, and admins.
+        </p>
+      </Panel>
+    );
+  }
+
+  return <StockInventorySheet />;
+}
+
+function IssuedEquipmentSheet() {
+  const {
+    role,
+    roster,
+    updateAthlete,
+    teamNames,
+    inventorySheetColumns,
+    addInventorySheetColumn,
+    renameInventorySheetColumn,
+    removeInventorySheetColumn,
+  } = useApp();
+  const canEdit = canEditRoster(role);
+  const [teamFilter, setTeamFilter] = useState<string>("all");
+  const [gradeFilter, setGradeFilter] = useState<string>("all");
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<"name" | "team" | "grade">("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [editingFields, setEditingFields] = useState(false);
+  const [newFieldLabel, setNewFieldLabel] = useState("");
+
+  function toggleSort(key: "name" | "team" | "grade") {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir("asc");
+  }
+
+  function sortMarker(key: "name" | "team" | "grade") {
+    if (sortKey !== key) return "";
+    return sortDir === "asc" ? " ↑" : " ↓";
+  }
+
+  function submitNewField(e: FormEvent) {
+    e.preventDefault();
+    if (!addInventorySheetColumn(newFieldLabel)) return;
+    setNewFieldLabel("");
+  }
+
+  const athletes = roster
+    .filter((a) => (a.personnelType ?? "athlete") === "athlete")
+    .filter((a) =>
+      teamFilter === "all" ? true : (a.teamLevel ?? "") === teamFilter,
+    )
+    .filter((a) =>
+      gradeFilter === "all" ? true : a.classYear === gradeFilter,
+    )
+    .filter((a) => {
+      if (!query.trim()) return true;
+      const q = query.trim().toLowerCase();
+      const lastFirst = athleteLastFirst(a).toLowerCase();
+      const team = (a.teamLevel ?? "").toLowerCase();
+      const teamAbbr = a.teamLevel
+        ? abbreviateTeam(a.teamLevel).toLowerCase()
+        : "";
+      const grade = (gradClassLabels[a.classYear] ?? a.classYear).toLowerCase();
+      const gradeAbbr = abbreviateGrade(a.classYear).toLowerCase();
+      return (
+        lastFirst.includes(q) ||
+        a.firstName.toLowerCase().includes(q) ||
+        a.lastName.toLowerCase().includes(q) ||
+        a.name.toLowerCase().includes(q) ||
+        team.includes(q) ||
+        teamAbbr.includes(q) ||
+        grade.includes(q) ||
+        gradeAbbr.includes(q) ||
+        a.classYear.toLowerCase().includes(q)
+      );
+    })
+    .slice()
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "name") {
+        cmp = compareByLastName(a, b);
+      } else if (sortKey === "team") {
+        cmp = (a.teamLevel ?? "").localeCompare(b.teamLevel ?? "", undefined, {
+          sensitivity: "base",
+        });
+        if (cmp === 0) cmp = compareByLastName(a, b);
+      } else {
+        cmp =
+          inventoryGradeOrder.indexOf(a.classYear) -
+          inventoryGradeOrder.indexOf(b.classYear);
+        if (cmp === 0) cmp = compareByLastName(a, b);
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+  return (
+    <Panel
+      title="Issued Equipment"
+      action={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => setEditingFields((v) => !v)}
+              className="rounded bg-[var(--cc-blue)] px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90"
+            >
+              {editingFields ? "Done" : "Edit fields"}
+            </button>
+          ) : null}
+          <span className="text-xs font-semibold text-[var(--cc-steel)]">
+            {athletes.length} athlete{athletes.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      }
+    >
+      <p className="mb-3 text-sm text-[var(--cc-steel)]">
+        Sizes issued to each athlete. Search or filter by name, team, or grade.
+        Click column headers to sort.
+      </p>
+      {canEdit && editingFields ? (
+        <div className="mb-3 rounded-lg border border-[var(--cc-line)] bg-[var(--cc-field)]/40 p-3">
+          <p className="mb-2 text-xs font-semibold text-[var(--cc-navy)]">
+            Equipment fields — rename, add, or delete. Changes apply to all
+            player profiles.
+          </p>
+          <ul className="space-y-1.5">
+            {inventorySheetColumns.map((col) => (
+              <li
+                key={col.key}
+                className="flex flex-wrap items-center gap-1.5"
+              >
+                <input
+                  value={col.label}
+                  onChange={(e) =>
+                    renameInventorySheetColumn(col.key, e.target.value)
+                  }
+                  onBlur={(e) => {
+                    const trimmed = e.target.value.trim();
+                    renameInventorySheetColumn(
+                      col.key,
+                      trimmed || "Untitled field",
+                    );
+                  }}
+                  className="min-w-[10rem] flex-1 rounded border border-[var(--cc-line)] bg-white px-2 py-1 text-xs text-[var(--cc-navy)]"
+                  aria-label={`Rename ${col.label}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeInventorySheetColumn(col.key)}
+                  className="rounded border border-[var(--cc-line)] px-2 py-1 text-xs font-semibold text-[var(--cc-navy)] hover:bg-white"
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+          {inventorySheetColumns.length === 0 ? (
+            <p className="mt-2 text-xs text-[var(--cc-steel)]">
+              No equipment fields yet. Add one below.
+            </p>
+          ) : null}
+          <form
+            onSubmit={submitNewField}
+            className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-[var(--cc-line)] pt-2"
+          >
+            <input
+              value={newFieldLabel}
+              onChange={(e) => setNewFieldLabel(e.target.value)}
+              placeholder="New field label…"
+              className="min-w-[10rem] flex-1 rounded border border-[var(--cc-line)] bg-white px-2 py-1 text-xs text-[var(--cc-navy)]"
+              aria-label="New equipment field label"
+            />
+            <button
+              type="submit"
+              disabled={!newFieldLabel.trim()}
+              className="rounded bg-[var(--cc-blue)] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Add field
+            </button>
+          </form>
+        </div>
+      ) : null}
+      <div className="mb-3 flex flex-wrap gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search name, team, or grade…"
+          className="min-w-[14rem] flex-1 rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm"
+        />
+        <select
+          value={teamFilter}
+          onChange={(e) => setTeamFilter(e.target.value)}
+          className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm font-medium text-[var(--cc-navy)]"
+        >
+          <option value="all">All teams</option>
+          {teamNames.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <select
+          value={gradeFilter}
+          onChange={(e) => setGradeFilter(e.target.value)}
+          className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm font-medium text-[var(--cc-navy)]"
+        >
+          <option value="all">All grades</option>
+          {inventoryGradeOrder.map((g) => (
+            <option key={g} value={g}>
+              {gradClassLabels[g]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-[var(--cc-line)]">
+        <table className="w-max border-collapse text-left text-sm">
+          <thead>
+            <tr className="bg-[var(--cc-navy)] text-white">
+              <th className="sticky left-0 z-10 whitespace-nowrap bg-[var(--cc-navy)] px-2 py-2 font-semibold">
+                <button
+                  type="button"
+                  onClick={() => toggleSort("name")}
+                  className="font-semibold hover:underline"
+                >
+                  Name{sortMarker("name")}
+                </button>
+              </th>
+              <th className="whitespace-nowrap px-1 py-2 font-semibold">
+                <button
+                  type="button"
+                  onClick={() => toggleSort("team")}
+                  className="font-semibold hover:underline"
+                >
+                  Team{sortMarker("team")}
+                </button>
+              </th>
+              <th className="whitespace-nowrap px-1 py-2 font-semibold">
+                <button
+                  type="button"
+                  onClick={() => toggleSort("grade")}
+                  className="font-semibold hover:underline"
+                >
+                  Grade{sortMarker("grade")}
+                </button>
+              </th>
+              {inventorySheetColumns.map((col) => (
+                <th
+                  key={col.key}
+                  className={`${col.key === "lockerNumber" ? "min-w-14" : "min-w-12"} whitespace-nowrap px-0.5 py-1.5 text-xs leading-tight font-semibold`}
+                >
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {athletes.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={3 + inventorySheetColumns.length}
+                  className="px-3 py-6 text-center text-[var(--cc-steel)]"
+                >
+                  No athletes match this filter.
+                </td>
+              </tr>
+            ) : (
+              athletes.map((a, i) => {
+                const fields = {
+                  ...emptyAthleteCustomFields(),
+                  ...a.customFields,
+                };
+                const displayName = athleteLastFirst(a);
+                return (
+                  <tr
+                    key={a.id}
+                    className={
+                      i % 2 === 0 ? "bg-white" : "bg-[var(--cc-field)]/50"
+                    }
+                  >
+                    <td className="sticky left-0 z-10 whitespace-nowrap border-t border-[var(--cc-line)] bg-inherit px-2 py-1 font-semibold text-[var(--cc-navy)]">
+                      <PlayerNameLink
+                        id={a.id}
+                        name={displayName}
+                        className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
+                      />
+                    </td>
+                    <td className="whitespace-nowrap border-t border-[var(--cc-line)] px-1 py-1 text-[var(--cc-steel)]">
+                      {a.teamLevel ? abbreviateTeam(a.teamLevel) : "—"}
+                    </td>
+                    <td className="whitespace-nowrap border-t border-[var(--cc-line)] px-1 py-1 text-[var(--cc-steel)]">
+                      {abbreviateGrade(a.classYear)}
+                    </td>
+                    {inventorySheetColumns.map((col) => (
+                      <td
+                        key={col.key}
+                        className={`${col.key === "lockerNumber" ? "min-w-14" : "min-w-12"} whitespace-nowrap border-t border-[var(--cc-line)] px-0.5 py-0.5`}
+                      >
+                        {canEdit ? (
+                          <input
+                            value={fields[col.key] ?? ""}
+                            onChange={(e) =>
+                              updateAthlete(a.id, {
+                                customFields: { [col.key]: e.target.value },
+                              })
+                            }
+                            className={`${col.key === "lockerNumber" ? "w-14" : "w-12"} rounded border border-[var(--cc-line)] bg-white px-px py-0.5 text-xs text-[var(--cc-navy)]`}
+                            aria-label={`${displayName} ${col.label}`}
+                          />
+                        ) : (
+                          <span className="px-px text-xs text-[var(--cc-navy)]">
+                            {fields[col.key] || "—"}
+                          </span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+function StockInventorySheet() {
+  const { role, branding, season } = useApp();
+  const canEdit = canEditRoster(role);
+  const [rows, setRows] = useState<StockInventoryRow[]>(() =>
+    seedStockInventory.map((r) => ({ ...r })),
+  );
+  const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    Helmets: true,
+  });
+  const [newItemName, setNewItemName] = useState("");
+
+  function patchRow(id: string, patch: Partial<StockInventoryRow>) {
+    setRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+    );
+  }
+
+  function renameItem(oldName: string, nextName: string) {
+    const name = nextName.trim();
+    if (!name || name === oldName) return;
+    setRows((prev) =>
+      prev.map((r) => (r.itemName === oldName ? { ...r, itemName: name } : r)),
+    );
+    setExpanded((prev) => {
+      const nextMap = { ...prev };
+      nextMap[name] = prev[oldName] ?? true;
+      delete nextMap[oldName];
+      return nextMap;
+    });
+  }
+
+  function addItemGroup() {
+    const name = newItemName.trim() || "New item";
+    const row = { ...emptyStockRow(), itemName: name, size: "M" };
+    setRows((prev) => [...prev, row]);
+    setExpanded((prev) => ({ ...prev, [name]: true }));
+    setNewItemName("");
+  }
+
+  function addSizeToItem(itemName: string) {
+    setRows((prev) => [
+      ...prev,
+      { ...emptyStockRow(), itemName, size: "" },
+    ]);
+    setExpanded((prev) => ({ ...prev, [itemName]: true }));
+  }
+
+  function removeRow(id: string) {
+    setRows((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  function removeItemGroup(itemName: string) {
+    setRows((prev) => prev.filter((r) => r.itemName !== itemName));
+    setExpanded((prev) => {
+      const nextMap = { ...prev };
+      delete nextMap[itemName];
+      return nextMap;
+    });
+  }
+
+  function toggleItem(itemName: string) {
+    setExpanded((prev) => ({ ...prev, [itemName]: !prev[itemName] }));
+  }
+
+  const filtered = rows.filter((r) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return (
+      r.itemName.toLowerCase().includes(q) ||
+      r.size.toLowerCase().includes(q) ||
+      r.notes.toLowerCase().includes(q) ||
+      r.replacementNumber.toLowerCase().includes(q)
+    );
+  });
+
+  const groups: { name: string; sizes: StockInventoryRow[] }[] = [];
+  const order: string[] = [];
+  for (const r of filtered) {
+    const key = r.itemName.trim() || "Untitled item";
+    if (!order.includes(key)) {
+      order.push(key);
+      groups.push({ name: key, sizes: [] });
+    }
+    groups.find((g) => g.name === key)!.sizes.push(r);
+  }
+
+  const conditionFields = [
+    { key: "conditionNew" as const, label: "New" },
+    { key: "conditionGood" as const, label: "Good" },
+    { key: "conditionFair" as const, label: "Fair" },
+    { key: "conditionPoor" as const, label: "Poor" },
+  ];
+
+  function sumQty(sizes: StockInventoryRow[]) {
+    return sizes.reduce((n, r) => n + (Number(r.quantityOnHand) || 0), 0);
+  }
+
+  function SizeSelect({ row }: { row: StockInventoryRow }) {
+    return (
+      <div className="flex min-w-[5.5rem] flex-col gap-1">
+        <select
+          value={
+            !row.size
+              ? ""
+              : inventorySizeOptions.includes(row.size)
+                ? row.size
+                : "Other"
+          }
+          onChange={(e) => {
+            const nextVal = e.target.value;
+            if (nextVal === "Other") {
+              patchRow(row.id, {
+                size:
+                  row.size && !inventorySizeOptions.includes(row.size)
+                    ? row.size
+                    : "Other",
+              });
+              return;
+            }
+            patchRow(row.id, { size: nextVal });
+          }}
+          className="w-full rounded-md border border-[var(--cc-line)] bg-white px-2 py-1.5 text-sm text-[var(--cc-navy)] print:border-0 print:px-1 print:py-0"
+          aria-label={`${row.itemName || "Item"} size`}
+        >
+          <option value="">Select size</option>
+          {inventorySizeOptions
+            .filter((s) => s !== "")
+            .map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+        </select>
+        {!inventorySizeOptions.includes(row.size) || row.size === "Other" ? (
+          <input
+            value={row.size === "Other" ? "" : row.size}
+            onChange={(e) =>
+              patchRow(row.id, { size: e.target.value || "Other" })
+            }
+            placeholder="Custom size"
+            className="depth-print-hide w-full rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-xs text-[var(--cc-navy)]"
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="inventory-print-root space-y-3">
+      <div className="depth-print-hide flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-xl font-bold text-[var(--cc-navy)]">Inventory</h2>
+          <p className="text-sm text-[var(--cc-steel)]">
+            Open an item (like Helmets) to see and edit each size underneath.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)]"
+        >
+          Print
+        </button>
+      </div>
+
+      <div className="mb-2 hidden print:block">
+        <p className="text-lg font-bold text-black">
+          {branding.name} · Inventory · Season {season}
+        </p>
+      </div>
+
+      <div className="depth-print-hide mb-3 flex flex-wrap gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search item, size, notes…"
+          className="min-w-[14rem] flex-1 rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm"
+        />
+        {canEdit ? (
+          <>
+            <input
+              value={newItemName}
+              onChange={(e) => setNewItemName(e.target.value)}
+              placeholder="New item name (e.g. Helmets)"
+              className="min-w-[12rem] rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={addItemGroup}
+              className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white"
+            >
+              + Add item
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      {groups.length === 0 ? (
+        <Panel title="No items">
+          <p className="text-sm text-[var(--cc-steel)]">
+            No inventory items match.
+          </p>
+        </Panel>
+      ) : (
+        <div className="space-y-3">
+          {groups.map((group) => {
+            const open = expanded[group.name] ?? false;
+            const total = sumQty(group.sizes);
+            return (
+              <section
+                key={group.name}
+                className="overflow-hidden rounded-xl border border-[var(--cc-line)] bg-white shadow-sm print:break-inside-avoid print:shadow-none"
+              >
+                <div className="flex flex-wrap items-center gap-2 border-b border-[var(--cc-line)] bg-[var(--cc-navy)] px-3 py-2.5 text-white print:bg-black">
+                  <button
+                    type="button"
+                    onClick={() => toggleItem(group.name)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left font-semibold"
+                  >
+                    <span className="depth-print-hide text-sm">
+                      {open ? "▾" : "▸"}
+                    </span>
+                    {canEdit ? (
+                      <input
+                        value={group.name}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const nextVal = e.target.value;
+                          setRows((prev) =>
+                            prev.map((r) =>
+                              r.itemName === group.name
+                                ? { ...r, itemName: nextVal }
+                                : r,
+                            ),
+                          );
+                        }}
+                        onBlur={(e) => {
+                          const nextVal =
+                            e.target.value.trim() || "Untitled item";
+                          if (nextVal !== group.name) {
+                            renameItem(group.name, nextVal);
+                          }
+                        }}
+                        className="w-full max-w-xs rounded-md border border-white/30 bg-white/10 px-2 py-1 text-sm font-semibold text-white placeholder:text-white/60 print:border-0 print:bg-transparent"
+                      />
+                    ) : (
+                      <span className="truncate text-base">{group.name}</span>
+                    )}
+                  </button>
+                  <span className="text-xs font-semibold text-white/80">
+                    {group.sizes.length} size
+                    {group.sizes.length === 1 ? "" : "s"} · {total} on hand
+                  </span>
+                  {canEdit ? (
+                    <div className="depth-print-hide flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => addSizeToItem(group.name)}
+                        className="rounded-md bg-white/15 px-2.5 py-1 text-xs font-semibold hover:bg-white/25"
+                      >
+                        + Size
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeItemGroup(group.name)}
+                        className="rounded-md bg-rose-500/20 px-2.5 py-1 text-xs font-semibold text-rose-100 hover:bg-rose-500/30"
+                      >
+                        Remove item
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className={open ? "block" : "hidden print:block"}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[52rem] border-collapse text-center text-sm print:min-w-0 print:text-xs">
+                      <thead>
+                        <tr className="bg-[var(--cc-field)] text-[var(--cc-navy)] print:bg-zinc-100">
+                          <th className="border border-[var(--cc-line)] px-2 py-2 font-semibold print:border-black">
+                            Size
+                          </th>
+                          <th className="border border-[var(--cc-line)] px-2 py-2 font-semibold print:border-black">
+                            Qty on Hand
+                          </th>
+                          {conditionFields.map((c) => (
+                            <th
+                              key={c.key}
+                              className="border border-[var(--cc-line)] px-2 py-2 text-xs font-semibold print:border-black"
+                            >
+                              {c.label}
+                            </th>
+                          ))}
+                          <th className="border border-[var(--cc-line)] px-2 py-2 text-xs font-semibold print:border-black">
+                            Replace?
+                          </th>
+                          <th className="border border-[var(--cc-line)] px-2 py-2 font-semibold print:border-black">
+                            Replacement #
+                          </th>
+                          <th className="border border-[var(--cc-line)] px-2 py-2 font-semibold print:border-black">
+                            Notes
+                          </th>
+                          {canEdit ? (
+                            <th className="depth-print-hide border border-[var(--cc-line)] px-2 py-2" />
+                          ) : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.sizes.map((r, i) => (
+                          <tr
+                            key={r.id}
+                            className={
+                              i % 2 === 0
+                                ? "bg-white"
+                                : "bg-[var(--cc-field)]/40 print:bg-white"
+                            }
+                          >
+                            <td className="border border-[var(--cc-line)] px-1.5 py-1 print:border-black">
+                              {canEdit ? (
+                                <SizeSelect row={r} />
+                              ) : (
+                                <span className="px-2 font-semibold text-[var(--cc-navy)]">
+                                  {r.size || "—"}
+                                </span>
+                              )}
+                            </td>
+                            <td className="border border-[var(--cc-line)] px-1.5 py-1 print:border-black">
+                              {canEdit ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={r.quantityOnHand}
+                                  onChange={(e) =>
+                                    patchRow(r.id, {
+                                      quantityOnHand: e.target.value,
+                                    })
+                                  }
+                                  className="w-full min-w-[4rem] rounded-md border border-[var(--cc-line)] bg-white px-2 py-1.5 text-center text-sm print:border-0"
+                                />
+                              ) : (
+                                <span>{r.quantityOnHand || "—"}</span>
+                              )}
+                            </td>
+                            {conditionFields.map((c) => (
+                              <td
+                                key={c.key}
+                                className="border border-[var(--cc-line)] px-1 py-1 print:border-black"
+                              >
+                                {canEdit ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={r[c.key]}
+                                    onChange={(e) =>
+                                      patchRow(r.id, {
+                                        [c.key]: e.target.value,
+                                      })
+                                    }
+                                    className="w-full min-w-[3rem] rounded-md border border-[var(--cc-line)] bg-white px-1.5 py-1.5 text-center text-sm print:border-0"
+                                  />
+                                ) : (
+                                  <span>{r[c.key] || "—"}</span>
+                                )}
+                              </td>
+                            ))}
+                            <td className="border border-[var(--cc-line)] px-1 py-1 print:border-black">
+                              <div className="flex items-center justify-center gap-2">
+                                <label className="inline-flex items-center gap-1 text-xs">
+                                  <input
+                                    type="radio"
+                                    name={`replaced-${r.id}`}
+                                    checked={r.needReplaced === "yes"}
+                                    disabled={!canEdit}
+                                    onChange={() =>
+                                      patchRow(r.id, { needReplaced: "yes" })
+                                    }
+                                  />
+                                  Yes
+                                </label>
+                                <label className="inline-flex items-center gap-1 text-xs">
+                                  <input
+                                    type="radio"
+                                    name={`replaced-${r.id}`}
+                                    checked={r.needReplaced === "no"}
+                                    disabled={!canEdit}
+                                    onChange={() =>
+                                      patchRow(r.id, { needReplaced: "no" })
+                                    }
+                                  />
+                                  No
+                                </label>
+                              </div>
+                            </td>
+                            <td className="border border-[var(--cc-line)] px-1.5 py-1 print:border-black">
+                              {canEdit ? (
+                                <input
+                                  value={r.replacementNumber}
+                                  onChange={(e) =>
+                                    patchRow(r.id, {
+                                      replacementNumber: e.target.value,
+                                    })
+                                  }
+                                  className="w-full min-w-[5rem] rounded-md border border-[var(--cc-line)] bg-white px-2 py-1.5 text-sm print:border-0"
+                                />
+                              ) : (
+                                <span>{r.replacementNumber || "—"}</span>
+                              )}
+                            </td>
+                            <td className="border border-[var(--cc-line)] px-1.5 py-1 print:border-black">
+                              {canEdit ? (
+                                <input
+                                  value={r.notes}
+                                  onChange={(e) =>
+                                    patchRow(r.id, { notes: e.target.value })
+                                  }
+                                  className="w-full min-w-[8rem] rounded-md border border-[var(--cc-line)] bg-white px-2 py-1.5 text-left text-sm print:border-0"
+                                />
+                              ) : (
+                                <span className="text-left">
+                                  {r.notes || "—"}
+                                </span>
+                              )}
+                            </td>
+                            {canEdit ? (
+                              <td className="depth-print-hide border border-[var(--cc-line)] px-2 py-1">
+                                <button
+                                  type="button"
+                                  onClick={() => removeRow(r.id)}
+                                  className="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
             );
           })}
         </div>
-      </Panel>
+      )}
     </div>
   );
 }
@@ -2690,7 +5806,7 @@ function AdminScreen({ section }: { section: "branding" | "members" }) {
     setInviteEmail("");
     if (inviteRole === "player" && created.athleteId) {
       setInviteFlash(
-        `${name} created — they now appear under Personnel → Rosters → Athletes.`,
+        `${name} created — they now appear under Staff → Rosters → Athletes.`,
       );
     } else {
       setInviteFlash(`${name} (${roleLabels[inviteRole]}) account created.`);
@@ -2828,7 +5944,7 @@ function AdminScreen({ section }: { section: "branding" | "members" }) {
               className="mt-1 block rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2"
             >
               {(
-                ["coach", "coordinator", "admin", "player", "parent"] as Role[]
+                ["coach", "coordinator", "admin", "player"] as Role[]
               ).map((r) => (
                 <option key={r} value={r}>
                   {roleLabels[r]}
@@ -2845,7 +5961,7 @@ function AdminScreen({ section }: { section: "branding" | "members" }) {
           </button>
           {inviteRole === "player" ? (
             <p className="w-full text-xs text-[var(--cc-steel)]">
-              Player accounts also appear under Personnel → Rosters → Athletes.
+              Player accounts also appear under Staff → Rosters → Athletes.
             </p>
           ) : null}
           {inviteFlash ? (
@@ -2936,23 +6052,9 @@ function AdminScreen({ section }: { section: "branding" | "members" }) {
                       <tr className="border-t border-[var(--cc-line)]">
                         <td className="px-3 py-3 font-medium text-[var(--cc-navy)]">
                           {linkedAthlete ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openPlayerSettings(linkedAthlete.id)
-                              }
-                              className="text-left font-medium text-[var(--cc-blue)] underline-offset-2 hover:underline"
-                            >
-                              {m.name}
-                            </button>
+                            <PlayerNameLink id={linkedAthlete.id} name={m.name} />
                           ) : isStaff ? (
-                            <button
-                              type="button"
-                              onClick={() => openCoachSettings(m.id)}
-                              className="text-left font-medium text-[var(--cc-blue)] underline-offset-2 hover:underline"
-                            >
-                              {m.name}
-                            </button>
+                            <CoachNameLink id={m.id} name={m.name} />
                           ) : (
                             m.name
                           )}
@@ -2970,7 +6072,9 @@ function AdminScreen({ section }: { section: "branding" | "members" }) {
                         </td>
                         <td className="px-3 py-3 text-[var(--cc-steel)]">
                           {isStaff
-                            ? (m.assignedTeams ?? []).join(", ") || "—"
+                            ? (m.assignedTeams ?? [])
+                                .map(abbreviateTeam)
+                                .join(", ") || "—"
                             : "—"}
                         </td>
                         <td className="px-3 py-3">
@@ -3125,199 +6229,10 @@ function AdminScreen({ section }: { section: "branding" | "members" }) {
   );
 }
 
-function AdminScheduleScreen() {
-  const {
-    role,
-    season,
-    gameMetaOverrides,
-    setGameMeta,
-    disabledOptionalGames,
-    setOptionalGameEnabled,
-  } = useApp();
-
-  if (!canEditScheduleMeta(role)) {
-    return (
-      <Panel title="Schedule">
-        <p className="text-sm text-[var(--cc-steel)]">
-          Admins and coordinators only.
-        </p>
-      </Panel>
-    );
-  }
-
-  const optionalGames = games.filter((g) => g.optional);
-  const preseasonOptional = optionalGames.filter((g) => g.kind !== "playoff");
-  const playoffOptional = optionalGames.filter((g) => g.kind === "playoff");
-  const heading = "Controls · Schedule";
-
-  return (
-    <div className="space-y-4">
-      <h1 className="text-3xl font-bold text-zinc-900">{heading}</h1>
-      <Panel title="Optional weeks">
-        <p className="mb-3 text-sm text-[var(--cc-steel)]">
-          Toggle which optional slots appear everywhere weeks are listed —
-          Schedule, Team Grades, Stats, Call Sheets, Practice Plans, Quizzes,
-          and Scout (Offense and Defense). Playoff weeks start hidden.
-        </p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-3">
-            <p className="text-xs font-bold uppercase tracking-wide text-[var(--cc-steel)]">
-              Preseason
-            </p>
-            <div className="mt-2 space-y-2">
-              {preseasonOptional.map((g) => (
-                <label
-                  key={g.id}
-                  className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--cc-navy)]"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!disabledOptionalGames[g.id]}
-                    onChange={(e) =>
-                      setOptionalGameEnabled(g.id, e.target.checked)
-                    }
-                    className="h-4 w-4 accent-[var(--cc-blue)]"
-                  />
-                  {gameSlotTitle(g)}
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-3">
-            <p className="text-xs font-bold uppercase tracking-wide text-[var(--cc-steel)]">
-              Playoffs (6 weeks)
-            </p>
-            <div className="mt-2 space-y-2">
-              {playoffOptional.map((g) => (
-                <label
-                  key={g.id}
-                  className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--cc-navy)]"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!disabledOptionalGames[g.id]}
-                    onChange={(e) =>
-                      setOptionalGameEnabled(g.id, e.target.checked)
-                    }
-                    className="h-4 w-4 accent-[var(--cc-blue)]"
-                  />
-                  {gameSlotLabel(g)}
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Panel>
-
-      <Panel title={`${season} event details`}>
-        <p className="mb-3 text-sm text-[var(--cc-steel)]">
-          Edit opponent/event name, date, time, venue, and home/away for every
-          slot.
-        </p>
-        <div className="space-y-3">
-          {games.map((base) => {
-            const g = mergeGameMeta(base, gameMetaOverrides);
-            const hidden = !!(g.optional && disabledOptionalGames[g.id]);
-            return (
-              <div
-                key={g.id}
-                className={`rounded-xl border border-[var(--cc-line)] p-3 ${
-                  hidden ? "bg-zinc-50 opacity-70" : "bg-white"
-                }`}
-              >
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-blue)]">
-                      {gameSlotLabel(g)}
-                      {g.optional ? " · Optional" : ""}
-                      {hidden ? " · Hidden" : ""}
-                    </p>
-                    <p className="text-sm font-bold text-[var(--cc-navy)]">
-                      {gameSlotTitle(g)}
-                    </p>
-                  </div>
-                  {g.optional ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOptionalGameEnabled(g.id, hidden)
-                      }
-                      className="rounded border border-[var(--cc-line)] px-2 py-1 text-xs font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
-                    >
-                      {hidden ? "Show" : "Hide"}
-                    </button>
-                  ) : null}
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                  <label className="block text-xs font-semibold text-[var(--cc-steel)] lg:col-span-2">
-                    Opponent / event
-                    <input
-                      value={g.opponent}
-                      onChange={(e) =>
-                        setGameMeta(g.id, { opponent: e.target.value })
-                      }
-                      className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
-                    />
-                  </label>
-                  <label className="block text-xs font-semibold text-[var(--cc-steel)]">
-                    Date
-                    <input
-                      value={g.date}
-                      onChange={(e) =>
-                        setGameMeta(g.id, { date: e.target.value })
-                      }
-                      className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
-                    />
-                  </label>
-                  <label className="block text-xs font-semibold text-[var(--cc-steel)]">
-                    Time
-                    <input
-                      value={g.time}
-                      onChange={(e) =>
-                        setGameMeta(g.id, { time: e.target.value })
-                      }
-                      className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
-                    />
-                  </label>
-                  <label className="block text-xs font-semibold text-[var(--cc-steel)]">
-                    Home / Away
-                    <select
-                      value={g.homeAway}
-                      onChange={(e) =>
-                        setGameMeta(g.id, {
-                          homeAway: e.target.value as "Home" | "Away",
-                        })
-                      }
-                      className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
-                    >
-                      <option value="Home">Home</option>
-                      <option value="Away">Away</option>
-                    </select>
-                  </label>
-                  <label className="block text-xs font-semibold text-[var(--cc-steel)] sm:col-span-2 lg:col-span-5">
-                    Venue
-                    <input
-                      value={g.venue}
-                      onChange={(e) =>
-                        setGameMeta(g.id, { venue: e.target.value })
-                      }
-                      className="mt-1 w-full rounded-md border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm font-medium text-[var(--cc-navy)]"
-                    />
-                  </label>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Panel>
-    </div>
-  );
-}
-
 function AdminTeamsScreen() {
   const { role, teamNames, setTeamNames } = useApp();
 
-  if (!canManageMembers(role) && !canEditDepthConfig(role)) {
+  if (!canManageMembers(role)) {
     return (
       <Panel title="Teams">
         <p className="text-sm text-[var(--cc-steel)]">Admin only.</p>
@@ -3373,187 +6288,378 @@ function AdminTeamsScreen() {
   );
 }
 
-function AdminTeamGoalsScreen() {
-  const { role, offenseGoals, defenseGoals } = useApp();
+function AdminProgramScreen() {
+  const {
+    role,
+    season,
+    currentSeasonId,
+    activeGameId,
+    setActiveWeek,
+    disabledOptionalGames,
+    gameMetaOverrides,
+    rollToNextSeason,
+    archivedSeasons,
+    deleteArchivedSeason,
+    weekAutoAdvance,
+    setWeekAutoAdvance,
+    setViewingSeason,
+    isArchiveMode,
+    scheduleGames,
+  } = useApp();
+  const [confirmRoll, setConfirmRoll] = useState(false);
+  const [autoDay, setAutoDay] = useState(
+    () => weekAutoAdvance?.dayOfWeek ?? 1,
+  );
+  const [autoTime, setAutoTime] = useState(
+    () => weekAutoAdvance?.time ?? "08:00",
+  );
 
-  if (!canEditGameGoals(role)) {
+  useEffect(() => {
+    setAutoDay(weekAutoAdvance?.dayOfWeek ?? 1);
+    setAutoTime(weekAutoAdvance?.time ?? "08:00");
+  }, [weekAutoAdvance]);
+
+  if (!canManageProgramSeason(role)) {
     return (
-      <Panel title="Team Goals">
-        <p className="text-sm text-[var(--cc-steel)]">
-          Admins and coordinators only.
-        </p>
+      <Panel title="Program">
+        <p className="text-sm text-[var(--cc-steel)]">Admin only.</p>
       </Panel>
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <h1 className="text-3xl font-bold text-zinc-900">
-        Controls · Team Goals
-      </h1>
-      <p className="text-sm text-[var(--cc-steel)]">
-        Edit offense and defense team goals used on Team Grades and This Week.
-      </p>
-      <UnitGoalsEditor
-        side="offense"
-        unitLabel="Offense"
-        goals={offenseGoals}
-      />
-      <UnitGoalsEditor
-        side="defense"
-        unitLabel="Defense"
-        goals={defenseGoals}
-      />
-    </div>
+  const weekOptions = visibleScheduleGames(scheduleGames, disabledOptionalGames).map((g) =>
+    mergeGameMeta(g, gameMetaOverrides),
   );
-}
-
-function AdminDepthSettingsScreen() {
-  const { role, schemes, classColors, setClassColors, deleteDepthScheme } =
-    useApp();
-  const [editorScheme, setEditorScheme] = useState<SchemeConfig | null | "new">(
+  const calendarDefault = resolveActiveGame(
+    visibleScheduleGames(scheduleGames, disabledOptionalGames),
     null,
+    undefined,
+    Number(season) || undefined,
   );
 
-  if (!canEditDepthConfig(role)) {
-    return (
-      <Panel title="Depth Chart Settings">
-        <p className="text-sm text-[var(--cc-steel)]">
-          Admins and coordinators only.
-        </p>
-      </Panel>
-    );
+  const dayNames = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+
+  function saveAutoAdvance(enabled: boolean) {
+    if (!enabled) {
+      setWeekAutoAdvance(null);
+      return;
+    }
+    const next: WeekAutoAdvanceConfig = {
+      enabled: true,
+      dayOfWeek: autoDay,
+      time: autoTime,
+    };
+    setWeekAutoAdvance(next);
   }
 
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl font-bold text-zinc-900">
-        Controls · Depth Chart Settings
-      </h1>
-      <Panel
-        title="Schemes"
-        action={
+      <h1 className="text-3xl font-bold text-zinc-900">Controls · Program</h1>
+
+      <Panel title="Active schedule week">
+        <p className="mb-3 text-sm text-[var(--cc-steel)]">
+          Sets the site-wide default for This Week, Game of the week, and My
+          Room week selectors. Leave on Auto to follow the next upcoming game by
+          date. Manual override still works alongside recurring auto-advance.
+        </p>
+        <label className="block text-sm">
+          <span className="font-semibold text-[var(--cc-navy)]">
+            Current week
+          </span>
+          <select
+            value={activeGameId ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setActiveWeek(v === "" ? null : v);
+            }}
+            disabled={isArchiveMode}
+            className="mt-1 w-full max-w-md rounded-lg border border-[var(--cc-line)] px-3 py-2 disabled:opacity-60"
+          >
+            <option value="">
+              Auto — {gameSlotTitle(calendarDefault)} ({gameSlotLabel(calendarDefault)})
+            </option>
+            {weekOptions.map((g) => (
+              <option key={g.id} value={g.id}>
+                {gameSlotLabel(g)} · {gameSlotTitle(g)} · {g.date}
+              </option>
+            ))}
+          </select>
+        </label>
+        {activeGameId ? (
           <button
             type="button"
-            onClick={() => setEditorScheme("new")}
-            className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white"
+            onClick={() => setActiveWeek(null)}
+            disabled={isArchiveMode}
+            className="mt-3 rounded border border-[var(--cc-line)] px-3 py-1.5 text-xs font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)] disabled:opacity-60"
           >
-            + New scheme
+            Clear override (use calendar)
           </button>
+        ) : null}
+      </Panel>
+
+      <Panel title="Recurring week auto-advance">
+        <p className="mb-3 text-sm text-[var(--cc-steel)]">
+          On the chosen local day and time each week, advance the active week to
+          the next visible schedule game. Checked on load and every 30 seconds.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="font-semibold text-[var(--cc-navy)]">Day</span>
+            <select
+              value={autoDay}
+              onChange={(e) => setAutoDay(Number(e.target.value))}
+              className="mt-1 block rounded-lg border border-[var(--cc-line)] px-3 py-2"
+            >
+              {dayNames.map((name, i) => (
+                <option key={name} value={i}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="font-semibold text-[var(--cc-navy)]">Time</span>
+            <input
+              type="time"
+              value={autoTime}
+              onChange={(e) => setAutoTime(e.target.value)}
+              className="mt-1 block rounded-lg border border-[var(--cc-line)] px-3 py-2"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => saveAutoAdvance(true)}
+            className="rounded-lg bg-[var(--cc-blue)] px-3 py-2 text-sm font-semibold text-white"
+          >
+            {weekAutoAdvance?.enabled ? "Update schedule" : "Enable"}
+          </button>
+          {weekAutoAdvance?.enabled ? (
+            <button
+              type="button"
+              onClick={() => saveAutoAdvance(false)}
+              className="rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+            >
+              Disable
+            </button>
+          ) : null}
+        </div>
+        {weekAutoAdvance?.enabled ? (
+          <p className="mt-3 text-sm text-[var(--cc-steel)]">
+            Active: every {dayNames[weekAutoAdvance.dayOfWeek]} at{" "}
+            {weekAutoAdvance.time} (local).
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-[var(--cc-steel)]">
+            Auto-advance is off.
+          </p>
+        )}
+      </Panel>
+
+      <Panel title="Season">
+        <p className="text-sm text-[var(--cc-steel)]">
+          Current season:{" "}
+          <span className="font-semibold text-[var(--cc-navy)]">
+            {currentSeasonId}
+          </span>
+          . Use the header season dropdown to browse archives. Admins and
+          coordinators can upload and edit content while viewing an archive;
+          only admins can delete archived seasons.
+        </p>
+        <button
+          type="button"
+          onClick={() => setConfirmRoll(true)}
+          disabled={isArchiveMode}
+          className="mt-4 rounded-lg bg-[var(--cc-navy)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+        >
+          Roll to next season
+        </button>
+      </Panel>
+
+      <Panel
+        title="Import from archive"
+        action={
+          !isArchiveMode && canImportFromArchive(role) ? (
+            <ImportFromArchiveButton
+              sideScope="all"
+              label="Choose items…"
+            />
+          ) : null
         }
       >
-        <p className="mb-3 text-sm text-[var(--cc-steel)]">
-          Add, edit, or delete depth chart schemes (positions, filters, Game Day
-          / Practice).
+        <p className="text-sm text-[var(--cc-steel)]">
+          Pull last season&apos;s templates into {currentSeasonId}: unit goals,
+          quizzes, depth placements, scout notes, week file slots, schedule
+          meta, recruiting fills, and grades. Coordinators can also import from
+          Goals, Quizzes, Scout, and Depth screens for their unit.
         </p>
-        <div className="space-y-2">
-          {schemes.length === 0 ? (
-            <p className="text-sm text-[var(--cc-steel)]">No schemes yet.</p>
-          ) : (
-            schemes.map((s) => (
-              <div
-                key={s.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] px-3 py-2"
+        {isArchiveMode ? (
+          <p className="mt-2 text-sm text-amber-800">
+            Return to the current season to import.
+          </p>
+        ) : null}
+      </Panel>
+
+      <Panel title="Archived seasons">
+        {archivedSeasons.length === 0 ? (
+          <p className="text-sm text-[var(--cc-steel)]">
+            No archived seasons yet. Rolling forward creates a snapshot you can
+            browse from the season dropdown.
+          </p>
+        ) : (
+          <ul className="divide-y divide-[var(--cc-line)] rounded-xl border border-[var(--cc-line)]">
+            {archivedSeasons.map((arch) => (
+              <li
+                key={arch.id}
+                className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm"
               >
                 <div>
                   <p className="font-semibold text-[var(--cc-navy)]">
-                    {s.label}
+                    {arch.label}
                   </p>
                   <p className="text-xs text-[var(--cc-steel)]">
-                    {s.schemeType} · {s.columns.length} position
-                    {s.columns.length === 1 ? "" : "s"}
+                    Archived{" "}
+                    {new Date(arch.archivedAt).toLocaleDateString(undefined, {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setEditorScheme(s)}
-                    className="rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-xs font-semibold text-[var(--cc-navy)]"
+                    onClick={() => setViewingSeason(arch.id)}
+                    className="rounded border border-[var(--cc-line)] px-2 py-1 text-xs font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
                   >
-                    Edit
+                    Browse
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Delete scheme “${s.label}”? This cannot be undone.`,
-                        )
-                      ) {
-                        deleteDepthScheme(s.id);
-                      }
-                    }}
-                    className="rounded-md border border-red-200 px-2 py-1 text-xs font-bold uppercase tracking-wide text-red-700 hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
+                  {canDeleteArchivedSeason(role) ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Permanently delete archived ${arch.label}? This cannot be undone.`,
+                          )
+                        ) {
+                          deleteArchivedSeason(arch.id);
+                        }
+                      }}
+                      className="rounded border border-red-200 px-2 py-1 text-xs font-bold uppercase tracking-wide text-red-700 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
                 </div>
-              </div>
-            ))
-          )}
-        </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </Panel>
-      <Panel title="Depth chart colors by graduating class">
-        <p className="mb-3 text-xs text-zinc-500">
-          Defaults from My GA Online (Cy Creek): Senior #59aaf5, Junior #d1cece,
-          Sophomore #a4e8aa, Freshmen #e1eb6d
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {gradClassOrder.map((key) => (
-            <label key={key} className="text-sm">
-              <span className="mb-1 block font-semibold text-zinc-800">
-                {gradClassLabels[key]}
-              </span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={classColors[key]}
-                  onChange={(e) => {
-                    const hex = e.target.value;
-                    setClassColors((prev) => ({ ...prev, [key]: hex }));
-                  }}
-                  className="h-10 w-12 cursor-pointer rounded border border-zinc-300 bg-white p-1"
-                />
-                <input
-                  value={classColors[key]}
-                  onChange={(e) => {
-                    const hex = e.target.value;
-                    setClassColors((prev) => ({ ...prev, [key]: hex }));
-                  }}
-                  className="w-full rounded border border-zinc-300 px-3 py-2 font-mono text-xs uppercase"
-                />
+
+      {confirmRoll ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="roll-season-title"
+        >
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--cc-line)] bg-white p-5 shadow-lg">
+            <h2
+              id="roll-season-title"
+              className="text-xl font-bold text-[var(--cc-navy)]"
+            >
+              Roll to {Number(currentSeasonId) + 1}?
+            </h2>
+            <p className="mt-2 text-sm text-[var(--cc-steel)]">
+              Archives season {currentSeasonId} for browsing from the season
+              dropdown, then
+              starts a fresh season with the same formats.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm">
+                <p className="font-semibold text-emerald-900">Kept</p>
+                <ul className="mt-1 list-inside list-disc text-emerald-900/90">
+                  <li>Philosophy, Playbook, Install, Resources</li>
+                  <li>Staff list, duties, coach assignments</li>
+                  <li>Members, roster people, branding</li>
+                  <li>Depth schemes / columns (empty fills)</li>
+                  <li>Goal templates &amp; sheet columns</li>
+                </ul>
               </div>
-              <div
-                className="mt-2 rounded px-2 py-1.5 text-center text-xs font-semibold text-zinc-900"
-                style={{ backgroundColor: classColors[key] }}
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm">
+                <p className="font-semibold text-amber-950">Cleared &amp; archived</p>
+                <ul className="mt-1 list-inside list-disc text-amber-950/90">
+                  <li>Schedule files, scout, call sheets, stats</li>
+                  <li>Grades, quizzes &amp; attempts</li>
+                  <li>Todos, group chat, attendance</li>
+                  <li>Depth placements, issued gear fills</li>
+                  <li>Recruiting sheet fills</li>
+                </ul>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmRoll(false)}
+                className="rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm font-semibold text-[var(--cc-navy)]"
               >
-                Sample name
-              </div>
-            </label>
-          ))}
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  rollToNextSeason();
+                  setConfirmRoll(false);
+                }}
+                className="rounded-lg bg-[var(--cc-navy)] px-3 py-2 text-sm font-semibold text-white"
+              >
+                Archive &amp; roll forward
+              </button>
+            </div>
+          </div>
         </div>
-      </Panel>
-      {editorScheme !== null ? (
-        <DepthChartEditorOverlay
-          initial={editorScheme === "new" ? null : editorScheme}
-          onClose={() => setEditorScheme(null)}
-        />
       ) : null}
     </div>
   );
 }
 
+function ArchiveBrowseRedirect() {
+  const { setPage, archivedSeasons, setViewingSeason, currentSeasonId } =
+    useApp();
+  useLayoutEffect(() => {
+    if (archivedSeasons[0]) setViewingSeason(archivedSeasons[0].id);
+    else setViewingSeason(currentSeasonId);
+    setPage("this-week");
+  }, [
+    archivedSeasons,
+    setViewingSeason,
+    currentSeasonId,
+    setPage,
+  ]);
+  return null;
+}
+
 function CallSheetScreen() {
-  const { role, side, gameWeekAssets, setGameWeekAsset } = useApp();
-  const canEdit = canEditContent(role);
-  const field = side === "defense" ? "defenseCallSheet" : "offenseCallSheet";
-  const unitLabel = side === "defense" ? "Defense" : "Offense";
+  const { role, side, gameWeekAssets, setGameWeekAsset, isArchiveMode } =
+    useApp();
+  const canEdit = canEditContent(role, isArchiveMode);
+  const field = unitCallSheetField(side);
+  const unitLabel = sideLabel(side);
 
   if (!canSeeScout(role)) {
     return (
       <Panel title={`${unitLabel} · Call Sheet`}>
         <p className="text-sm text-[var(--cc-steel)]">
-          Call sheets are hidden for parents and fans.
+          Call sheets are hidden for this role.
         </p>
       </Panel>
     );
@@ -3578,16 +6684,17 @@ function CallSheetScreen() {
 }
 
 function StatsScreen() {
-  const { role, side, gameWeekAssets, setGameWeekAsset } = useApp();
-  const canEdit = canEditContent(role);
-  const field = side === "defense" ? "defenseStats" : "offenseStats";
-  const unitLabel = side === "defense" ? "Defense" : "Offense";
+  const { role, side, gameWeekAssets, setGameWeekAsset, isArchiveMode } =
+    useApp();
+  const canEdit = canEditContent(role, isArchiveMode);
+  const field = unitStatsField(side);
+  const unitLabel = sideLabel(side);
 
   if (!canSeeScout(role)) {
     return (
       <Panel title={`${unitLabel} · Stats`}>
         <p className="text-sm text-[var(--cc-steel)]">
-          Unit stats are hidden for parents and fans.
+          Unit stats are hidden for this role.
         </p>
       </Panel>
     );
@@ -3612,15 +6719,16 @@ function StatsScreen() {
 }
 
 function PracticePlansScreen() {
-  const { role, side, gameWeekAssets, setGameWeekAsset } = useApp();
-  const canEdit = canEditContent(role);
-  const unitLabel = side === "defense" ? "Defense" : "Offense";
+  const { role, side, gameWeekAssets, setGameWeekAsset, isArchiveMode } =
+    useApp();
+  const canEdit = canEditContent(role, isArchiveMode);
+  const unitLabel = sideLabel(side);
 
   if (!canSeeScout(role)) {
     return (
       <Panel title={`${unitLabel} · Practice Plans`}>
         <p className="text-sm text-[var(--cc-steel)]">
-          Practice plans are hidden for parents and fans.
+          Practice plans are hidden for this role.
         </p>
       </Panel>
     );
@@ -3637,7 +6745,7 @@ function PracticePlansScreen() {
         return (
           <div className="grid gap-2 sm:grid-cols-2">
             {practiceDays.map((day) => {
-              const field = side === "defense" ? day.defense : day.offense;
+              const field = practiceAssetField(side, day);
               return (
                 <FileSlot
                   key={day.key}
@@ -3657,7 +6765,7 @@ function PracticePlansScreen() {
 }
 
 function TeachScreen({ kind }: { kind: string }) {
-  const { side, role } = useApp();
+  const { side, role, isArchiveMode } = useApp();
   const titles: Record<string, string> = {
     "teach-playbook": "Playbook",
     "teach-playbook-builder": "Playbook Builder",
@@ -3670,7 +6778,7 @@ function TeachScreen({ kind }: { kind: string }) {
   const title = titles[kind] ?? "Teach";
 
   if (kind === "teach-playbook-builder") {
-    return <PlaybookTool side={side} canEdit={canEditContent(role)} />;
+    return <PlaybookTool side={side} canEdit={canEditContent(role, isArchiveMode)} persistLibrary={!isArchiveMode} />;
   }
 
   if (kind === "teach-call-sheet") {
@@ -3683,9 +6791,9 @@ function TeachScreen({ kind }: { kind: string }) {
 
   return (
     <Panel
-      title={`${side === "defense" ? "Defense" : "Offense"} · ${title}`}
+      title={`${sideLabel(side)} · ${title}`}
       action={
-        canEditContent(role) ? (
+        canEditContent(role, isArchiveMode) ? (
           <button
             type="button"
             className="rounded-lg bg-[var(--cc-blue)] px-3 py-2 text-sm font-semibold text-white"
@@ -3714,54 +6822,112 @@ function TeachScreen({ kind }: { kind: string }) {
 }
 
 function ScoutScreen() {
-  const { role, side, gameWeekAssets, setGameWeekAsset } = useApp();
-  const canEdit = canEditContent(role);
-  const field = side === "defense" ? "defenseScout" : "offenseScout";
-  const unitLabel = side === "defense" ? "Defense" : "Offense";
+  const { role, side, gameWeekAssets, setGameWeekAsset, isArchiveMode } =
+    useApp();
+  const canEdit = canEditContent(role, isArchiveMode);
+  const field = unitScoutField(side);
+  const unitLabel = sideLabel(side);
 
   if (!canSeeScout(role)) {
     return (
       <Panel title="Scouting">
         <p className="text-sm text-[var(--cc-steel)]">
-          Scouting is hidden for parents and fans.
+          Scouting is hidden for this role.
         </p>
       </Panel>
     );
   }
 
   return (
-    <WeekSections
-      title={`${unitLabel} · Scouting Reports`}
-      blurb="One scouting report per opponent — same files as Schedule. Players can view; parents/fans cannot."
-    >
-      {(g) => (
-        <FileSlot
-          label={`${unitLabel} scouting report`}
-          fileName={gameWeekAssets[g.id]?.[field] ?? null}
-          canEdit={canEdit}
-          folderHint="Schedule"
-          onPick={(name) => setGameWeekAsset(g.id, field, name)}
-        />
-      )}
-    </WeekSections>
+    <div className="space-y-4">
+      {canEdit && (role === "admin" || role === "coordinator") ? (
+        <div className="flex flex-wrap justify-end gap-2">
+          <ImportFromArchiveButton
+            presetCategories={["scoutReports", "weekAssets"]}
+            sideScope="current"
+            label="Add scout from archive"
+          />
+        </div>
+      ) : null}
+      <WeekSections
+        title={`${unitLabel} · Scouting Reports`}
+        blurb="One scouting report per opponent — same files as Schedule. Players can view."
+      >
+        {(g) => (
+          <FileSlot
+            label={`${unitLabel} scouting report`}
+            fileName={gameWeekAssets[g.id]?.[field] ?? null}
+            canEdit={canEdit}
+            folderHint="Schedule"
+            onPick={(name) => setGameWeekAsset(g.id, field, name)}
+          />
+        )}
+      </WeekSections>
+    </div>
   );
 }
 
 function useMyRoomContext() {
-  const { side, role, coachAssignments, offenseGroupCodes, defenseGroupCodes } =
-    useApp();
+  const {
+    side,
+    role,
+    coachAssignments,
+    offenseGroupCodes,
+    defenseGroupCodes,
+    roster,
+  } = useApp();
+
+  if (role === "player") {
+    const athlete = findDemoPlayerAthlete(roster);
+    const myGroups = athlete
+      ? athlete.groups.map(migrateGroupAbbreviation)
+      : [];
+    const profile = athlete
+      ? {
+          name: athlete.name,
+          groups: myGroups,
+          side,
+          coachId: undefined as string | undefined,
+        }
+      : null;
+    return {
+      side,
+      role,
+      profile,
+      allowed: false,
+      canChat: canUseGroupChat(role) && myGroups.length > 0,
+      myGroups,
+      groupSet: new Set(myGroups),
+      chatSenderId: athlete?.id ?? "",
+      chatSenderName: athlete?.name ?? "",
+      chatSenderRole: "player" as GroupChatSenderRole,
+    };
+  }
+
   const profile = myRoomProfile(role, side, coachAssignments);
-  const allowed = canSeeMyRoom(role) && profile;
+  const allowed = canSeeMyRoomStaff(role) && !!profile;
   const myGroups = profile
     ? expandCoachGroupsWith(
         profile.groups,
-        side,
+        profile.side,
         offenseGroupCodes,
         defenseGroupCodes,
       )
     : [];
   const groupSet = new Set(myGroups);
-  return { side, role, profile, allowed, myGroups, groupSet };
+  const chatSenderRole: GroupChatSenderRole = "coach";
+  return {
+    side,
+    role,
+    profile,
+    allowed,
+    canChat: canUseGroupChat(role) && myGroups.length > 0,
+    myGroups,
+    groupSet,
+    chatSenderId: profile?.coachId ?? profile?.name ?? "",
+    chatSenderName: profile?.name ?? "",
+    chatSenderRole,
+  };
 }
 
 function MyRoomHeader({
@@ -3771,18 +6937,30 @@ function MyRoomHeader({
   title: string;
   subtitle?: string;
 }) {
-  const { profile, myGroups, side } = useMyRoomContext();
+  const { profile, myGroups, side, role } = useMyRoomContext();
   if (!profile) return null;
+  const eyebrow =
+    role === "player" ? (
+      <>My Stuff · {profile.name}</>
+    ) : (
+      <>
+        My Stuff ·{" "}
+        <CoachNameLink
+          name={profile.name}
+          className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
+        />
+      </>
+    );
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cc-steel)]">
-          My Group · {profile.name}
+          {eyebrow}
         </p>
         <h1 className="text-2xl font-bold text-[var(--cc-navy)]">{title}</h1>
         <p className="mt-1 text-sm text-[var(--cc-steel)]">
           {subtitle ??
-            `${side === "defense" ? "Defense" : "Offense"} · Groups: ${myGroups.join(", ")}`}
+            `${sideLabel(side)} · Groups: ${myGroups.join(", ")}`}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -3798,9 +6976,9 @@ function MyRoomGate({ children }: { children: React.ReactNode }) {
   const { allowed } = useMyRoomContext();
   if (!allowed) {
     return (
-      <Panel title="My Group">
+      <Panel title="My Stuff">
         <p className="text-sm text-[var(--cc-steel)]">
-          My Group is for coaches and coordinators.
+          My Stuff is for coaches and coordinators.
         </p>
       </Panel>
     );
@@ -3808,23 +6986,273 @@ function MyRoomGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function MyRoomGroupScreen() {
-  const { myGroups, groupSet } = useMyRoomContext();
-  const { roster: allAthletes } = useApp();
+function formatGroupChatTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+/** Survives my-room-chat → my-room-group remount so Chat stays selected. */
+let pendingMyRoomGroupTab: "roster" | "chat" | null = null;
+
+function MyRoomGroupChatPanel({
+  readOnly = false,
+}: {
+  readOnly?: boolean;
+}) {
+  const {
+    myGroups,
+    canChat,
+    role,
+    chatSenderId,
+    chatSenderName,
+    chatSenderRole,
+  } = useMyRoomContext();
+  const { groupChatMessagesByGroup, sendGroupChatMessage } = useApp();
+  const [activeGroup, setActiveGroup] = useState(myGroups[0] ?? "");
+  const [draft, setDraft] = useState("");
+  const listRef = useRef<HTMLUListElement | null>(null);
+
+  useEffect(() => {
+    if (!myGroups.includes(activeGroup)) {
+      setActiveGroup(myGroups[0] ?? "");
+    }
+  }, [myGroups, activeGroup]);
+
+  const messages = activeGroup
+    ? (groupChatMessagesByGroup[activeGroup] ?? [])
+    : [];
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages.length, activeGroup]);
+
+  function send(e?: FormEvent) {
+    e?.preventDefault();
+    if (readOnly) return;
+    const body = draft.trim();
+    if (!activeGroup || !body || !canChat || !chatSenderId) return;
+    sendGroupChatMessage({
+      group: activeGroup,
+      senderId: chatSenderId,
+      senderName: chatSenderName,
+      senderRole: chatSenderRole,
+      body,
+    });
+    setDraft("");
+  }
+
+  if (!canChat || myGroups.length === 0) {
+    return (
+      <Panel title="Chat">
+        <p className="text-sm text-[var(--cc-steel)]">
+          {role === "player"
+            ? "Your roster does not list a position group yet."
+            : "You are not assigned to a position group yet."}
+        </p>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel title={`${activeGroup || "Group"} · Chat`}>
+      {myGroups.length > 1 ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {myGroups.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setActiveGroup(g)}
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
+                activeGroup === g
+                  ? "bg-[var(--cc-blue)] text-white"
+                  : "border border-[var(--cc-line)] bg-white text-[var(--cc-navy)]"
+              }`}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="mb-3 text-sm font-semibold text-[var(--cc-navy)]">
+          Group: {activeGroup}
+        </p>
+      )}
+
+      <ul
+        ref={listRef}
+        className="mb-4 max-h-[28rem] space-y-3 overflow-y-auto rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-3"
+      >
+        {messages.length === 0 ? (
+          <li className="text-sm text-[var(--cc-steel)]">
+            No messages yet
+            {readOnly ? "." : `. Start the thread for ${activeGroup}.`}
+          </li>
+        ) : (
+          messages.map((m) => (
+            <li
+              key={m.id}
+              className="rounded-xl border border-[var(--cc-line)] bg-white px-3 py-2"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-sm font-semibold text-[var(--cc-navy)]">
+                  {m.senderName}{" "}
+                  <span className="font-medium text-[var(--cc-steel)]">
+                    · {m.senderRole === "coach" ? "Coach" : "Player"}
+                  </span>
+                </p>
+                <time
+                  className="text-xs text-[var(--cc-steel)]"
+                  dateTime={m.createdAt}
+                >
+                  {formatGroupChatTime(m.createdAt)}
+                </time>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--cc-navy)]">
+                {m.body}
+              </p>
+            </li>
+          ))
+        )}
+      </ul>
+
+      {readOnly ? (
+        <p className="text-sm text-[var(--cc-steel)]">
+          Archive view — chat is read-only.
+        </p>
+      ) : (
+        <form
+          onSubmit={send}
+          className="flex flex-wrap items-end gap-2 sm:flex-nowrap"
+        >
+          <label className="min-w-0 flex-1 text-sm">
+            <span className="sr-only">Message</span>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={2}
+              placeholder={`Message ${activeGroup}…`}
+              className="w-full rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={!draft.trim() || !activeGroup}
+            className="rounded-lg bg-[var(--cc-blue)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
+      )}
+    </Panel>
+  );
+}
+
+function MyRoomGroupScreen({
+  initialTab = "roster",
+}: {
+  initialTab?: "roster" | "chat";
+}) {
+  const { myGroups, groupSet, role, profile, allowed } = useMyRoomContext();
+  const { roster: allAthletes, isArchiveMode } = useApp();
+  const [tab, setTab] = useState<"roster" | "chat">(() => {
+    if (pendingMyRoomGroupTab) {
+      const next = pendingMyRoomGroupTab;
+      pendingMyRoomGroupTab = null;
+      return next;
+    }
+    // Players: chat-only Position Group (no Roster tab)
+    if (role === "player") return "chat";
+    return initialTab;
+  });
+
   const roster = allAthletes
     .filter((a) => a.groups.some((g) => groupSet.has(g)))
     .slice()
     .sort(compareByLastName);
 
+  const canOpen =
+    role === "player"
+      ? canUseGroupChat(role) && !!profile
+      : allowed;
+
+  if (!canOpen) {
+    return (
+      <Panel title="Position Group">
+        <p className="text-sm text-[var(--cc-steel)]">
+          {role === "player"
+            ? "Group chat is for coaches and players in a position group."
+            : "My Stuff is for coaches and coordinators."}
+        </p>
+      </Panel>
+    );
+  }
+
+  const isPlayer = role === "player";
+
   return (
-    <MyRoomGate>
-      <div className="space-y-4">
-        <MyRoomHeader title="Position Group" />
-        <Panel title={`Roster · ${myGroups.join(", ")}`}>
+    <div className="space-y-4">
+      <MyRoomHeader
+        title="Position Group"
+        subtitle={
+          isPlayer
+            ? `Chat · ${myGroups.join(", ") || "—"}`
+            : undefined
+        }
+      />
+      {!isPlayer ? (
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { id: "roster" as const, label: "Roster" },
+              { id: "chat" as const, label: "Chat" },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setTab(item.id)}
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
+                tab === item.id
+                  ? "bg-[var(--cc-blue)] text-white"
+                  : "border border-[var(--cc-line)] bg-white text-[var(--cc-navy)]"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {isPlayer || tab === "chat" ? (
+        <MyRoomGroupChatPanel
+          readOnly={isArchiveMode && !canEditContent(role, isArchiveMode)}
+        />
+      ) : (
+        <Panel title={`Roster · ${myGroups.join(", ") || "—"}`}>
           <p className="mb-3 text-sm text-[var(--cc-steel)]">
             Players assigned to your group(s).
           </p>
-          {roster.length === 0 ? (
+          {myGroups.length === 0 ? (
+            <p className="text-sm text-[var(--cc-steel)]">
+              You are not assigned to a position group yet.
+            </p>
+          ) : roster.length === 0 ? (
             <p className="text-sm text-[var(--cc-steel)]">
               No players in this group yet.
             </p>
@@ -3838,32 +7266,74 @@ function MyRoomGroupScreen() {
                   <span className="font-semibold text-[var(--cc-navy)]">
                     <PlayerNameLink
                       id={a.id}
-                      name={a.name}
+                      name={athleteLastFirst(a)}
                       className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
                     />
                   </span>
                   <span className="mt-0.5 block text-xs text-[var(--cc-steel)]">
                     {a.groups.filter((g) => groupSet.has(g)).join(", ")} ·{" "}
-                    {a.classYear}
+                    {abbreviateGrade(a.classYear)}
                   </span>
                 </li>
               ))}
             </ul>
           )}
         </Panel>
-      </div>
-    </MyRoomGate>
+      )}
+    </div>
+  );
+}
+
+/** Legacy deep-link: my-room-chat → Position Group with Chat tab selected. */
+function MyRoomChatRedirect() {
+  const { setPage } = useApp();
+  useLayoutEffect(() => {
+    pendingMyRoomGroupTab = "chat";
+    setPage("my-room-group");
+  }, [setPage]);
+  return null;
+}
+
+function personalTodoCoversDuty(
+  todos: { text: string; done: boolean; sourceResponsibilityId?: string }[],
+  dutyId: string,
+  dutyText: string,
+) {
+  const normalized = dutyText.trim().toLowerCase();
+  return todos.some(
+    (t) =>
+      !t.done &&
+      (t.sourceResponsibilityId === dutyId ||
+        t.text.trim().toLowerCase() === normalized),
   );
 }
 
 function MyRoomResponsiblesScreen() {
   const { profile } = useMyRoomContext();
-  const { coachDutiesList, coachAssignments } = useApp();
+  const {
+    coachDutiesList,
+    coachAssignments,
+    personalTodosByOwner,
+    addPersonalTodo,
+    updatePersonalTodo,
+    togglePersonalTodo,
+    removePersonalTodo,
+  } = useApp();
+
+  const ownerKey = profile?.name ?? "";
+  const personalTodos = personalTodosByOwner[ownerKey] ?? [];
+  const doneCount = personalTodos.filter((t) => t.done).length;
 
   const relevant = coachDutiesList.filter((d) => {
-    // My Group → Responsibilities shows only the signed-in coach/coordinator’s card
+    // My Stuff → Responsibilities shows only the signed-in coach/coordinator’s card
     return !!profile && d.coach === profile.name;
   });
+
+  function quickAddDuty(dutyId: string, text: string) {
+    if (!ownerKey) return;
+    if (personalTodoCoversDuty(personalTodos, dutyId, text)) return;
+    addPersonalTodo(ownerKey, text, { sourceResponsibilityId: dutyId });
+  }
 
   return (
     <MyRoomGate>
@@ -3871,8 +7341,9 @@ function MyRoomResponsiblesScreen() {
         <MyRoomHeader title="Responsibilities" />
         <Panel title="Your responsibilities">
           <p className="mb-4 text-sm text-[var(--cc-steel)]">
-            Your assigned responsibilities and optional deadlines from Controls →
-            Coaches Responsibilities.
+            Your assigned responsibilities and optional deadlines from Staff →
+            Responsibilities. Quick-add a duty to your personal to-do list for
+            This Week.
           </p>
           {relevant.length === 0 ? (
             <p className="text-sm text-[var(--cc-steel)]">
@@ -3894,7 +7365,11 @@ function MyRoomResponsiblesScreen() {
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-semibold text-[var(--cc-navy)]">
-                        {d.coach}
+                        <CoachNameLink
+                          id={staff?.id}
+                          name={d.coach}
+                          className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
+                        />
                       </h3>
                       <Chip>{d.role}</Chip>
                       <Chip>
@@ -3904,19 +7379,41 @@ function MyRoomResponsiblesScreen() {
                       </Chip>
                     </div>
                     <ul className="mt-2 space-y-1.5 text-sm text-[var(--cc-steel)]">
-                      {d.duties.map((x) => (
-                        <li
-                          key={x.id}
-                          className="flex flex-wrap items-baseline justify-between gap-2"
-                        >
-                          <span>· {x.text}</span>
-                          {x.dueBy ? (
-                            <span className="text-xs font-semibold text-[var(--cc-navy)]">
-                              Due {x.dueBy}
-                            </span>
-                          ) : null}
-                        </li>
-                      ))}
+                      {d.duties.map((x) => {
+                        const onList = personalTodoCoversDuty(
+                          personalTodos,
+                          x.id,
+                          x.text,
+                        );
+                        return (
+                          <li
+                            key={x.id}
+                            className="flex flex-wrap items-center justify-between gap-2"
+                          >
+                            <span className="min-w-0 flex-1">· {x.text}</span>
+                            <div className="flex shrink-0 flex-wrap items-center gap-2">
+                              {x.dueBy ? (
+                                <span className="text-xs font-semibold text-[var(--cc-navy)]">
+                                  Due {x.dueBy}
+                                </span>
+                              ) : null}
+                              <button
+                                type="button"
+                                disabled={!ownerKey || onList}
+                                onClick={() => quickAddDuty(x.id, x.text)}
+                                className="rounded-md border border-[var(--cc-line)] bg-white px-2 py-0.5 text-xs font-semibold text-[var(--cc-blue)] hover:bg-[var(--cc-field)] disabled:cursor-default disabled:opacity-50"
+                                aria-label={
+                                  onList
+                                    ? `${x.text} already on my to-dos`
+                                    : `Add ${x.text} to my to-dos`
+                                }
+                              >
+                                {onList ? "On list" : "+ Add to my to-dos"}
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                     {d.notes ? (
                       <p className="mt-2 text-sm text-[var(--cc-navy)]">
@@ -3929,17 +7426,99 @@ function MyRoomResponsiblesScreen() {
             </div>
           )}
         </Panel>
+
+        <Panel
+          title="My to-dos"
+          action={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {personalTodos.length > 0 ? (
+                <span className="rounded-full bg-[var(--cc-blue)]/10 px-2.5 py-1 text-xs font-semibold text-[var(--cc-blue)]">
+                  {doneCount}/{personalTodos.length} done
+                </span>
+              ) : null}
+              <button
+                type="button"
+                disabled={!ownerKey}
+                onClick={() => addPersonalTodo(ownerKey)}
+                className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                + Add
+              </button>
+            </div>
+          }
+        >
+          <p className="mb-4 text-sm text-[var(--cc-steel)]">
+            Personal items for this week — synced with This Week. Check them
+            off, edit the text, or remove ones you no longer need.
+          </p>
+          {personalTodos.length === 0 ? (
+            <p className="text-sm text-[var(--cc-steel)]">
+              No personal to-dos yet. Use Add, or quick-add from a responsibility
+              above.
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--cc-line)] rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)]/30">
+              {personalTodos.map((item) => (
+                <li key={item.id}>
+                  <div
+                    className={`flex flex-wrap items-center gap-2 px-2.5 py-1.5 transition ${
+                      item.done ? "bg-[var(--cc-field)]/80" : "hover:bg-white/80"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={() => togglePersonalTodo(ownerKey, item.id)}
+                      className="h-3.5 w-3.5 shrink-0 accent-[var(--cc-blue)]"
+                      aria-label={`Mark done: ${item.text}`}
+                    />
+                    <input
+                      type="text"
+                      value={item.text}
+                      onChange={(e) =>
+                        updatePersonalTodo(ownerKey, item.id, {
+                          text: e.target.value,
+                        })
+                      }
+                      className={`min-w-[10rem] flex-1 rounded-lg border border-[var(--cc-line)] bg-white px-2.5 py-1.5 text-sm ${
+                        item.done
+                          ? "text-[var(--cc-steel)] line-through"
+                          : "text-[var(--cc-navy)]"
+                      }`}
+                      aria-label="Edit to-do"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePersonalTodo(ownerKey, item.id)}
+                      className="shrink-0 rounded border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
       </div>
     </MyRoomGate>
   );
 }
 
 function MyRoomDepthScreen() {
-  const { myGroups, side, role } = useMyRoomContext();
-  const { setPage, teamNames, ensureDepthBoard } = useApp();
-  const schemeId: DepthScheme = side === "defense" ? "Defense" : "Offense";
+  const { myGroups, profile, role } = useMyRoomContext();
+  const { setPage, teamNames, ensureDepthBoard, isArchiveMode } = useApp();
+  // Use the coach's assigned unit, not the global Team side switcher — otherwise
+  // a DL coach on Offense sees "No depth-chart columns match."
+  const unitSide = profile?.side ?? "defense";
+  const schemeId: DepthScheme =
+    unitSide === "defense"
+      ? "Defense"
+      : unitSide === "specialTeams"
+        ? "Kick Off"
+        : "Offense";
   const teams = teamNames.length ? teamNames : [...teamLevels];
-  const canEdit = canMoveDepthPlayers(role);
+  const canEdit = canMoveDepthPlayers(role) && canEditContent(role, isArchiveMode);
 
   useEffect(() => {
     teams.forEach((_, teamIndex) => {
@@ -3985,8 +7564,8 @@ function MyRoomDepthScreen() {
           <p className="mt-3 text-xs text-[var(--cc-steel)]">
             Charts start with 3 rows; putting anyone on the last row adds another.
             {canEdit
-              ? " Click a square to search athletes by group · drag to move/swap."
-              : ""}
+              ? " Click a name for profile · click a square to search athletes by group · drag to move/swap."
+              : " Click a name to open their profile."}
           </p>
         </Panel>
       </div>
@@ -4117,6 +7696,8 @@ function MyRoomDepthTeamEditor({
       schemeId={schemeId}
       schemeLabel={schemeLabel}
       groupFilter={groupFilter}
+      editableGroups={groupFilter}
+      readOnly={!canEdit}
       board={draft}
       onSetDepthCell={setDraftCell}
       onMoveDepthPlayer={moveDraftPlayer}
@@ -4152,14 +7733,166 @@ function MyRoomDepthTeamEditor({
   );
 }
 
+function GameOfTheWeekPanel() {
+  const {
+    gameMetaOverrides,
+    disabledOptionalGames,
+    setPage,
+    season,
+    activeGameId,
+    scheduleGames,
+  } = useApp();
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  const weekGame = useMemo(() => {
+    const visible = visibleScheduleGames(scheduleGames, disabledOptionalGames);
+    const year = Number(season) || undefined;
+    return mergeGameMeta(
+      resolveActiveGame(visible, activeGameId, undefined, year),
+      gameMetaOverrides,
+    );
+  }, [
+    disabledOptionalGames,
+    gameMetaOverrides,
+    season,
+    activeGameId,
+    scheduleGames,
+  ]);
+
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [weekGame.id]);
+
+  return (
+    <Panel title="Game of the week">
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[var(--cc-line)] bg-[var(--cc-field)]">
+          {weekGame.logo && !logoFailed ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={weekGame.logo}
+              alt={`${weekGame.opponent} logo`}
+              className="h-full w-full object-contain p-2"
+              onError={() => setLogoFailed(true)}
+            />
+          ) : (
+            <span className="text-2xl font-bold text-[var(--cc-navy)]">
+              {opponentMonogram(weekGame.opponent)}
+            </span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cc-blue)]">
+            {gameSlotLabel(weekGame)}
+          </p>
+          <h3 className="mt-1 flex flex-wrap items-center gap-2 text-2xl font-semibold text-[var(--cc-navy)]">
+            {gameSlotTitle(weekGame)}
+            <GameResultBadge game={weekGame} />
+          </h3>
+          <p className="mt-1 text-sm text-[var(--cc-steel)]">
+            {weekGame.date} · {weekGame.time} · {weekGame.homeAway} ·{" "}
+            {weekGame.venue}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <WeekActionButton
+              label="Full schedule"
+              onClick={() => setPage("schedule")}
+            />
+            <a
+              href={
+                weekGame.links2026?.schedule ??
+                weekGame.dctfUrl ??
+                team.maxPrepsUrl
+              }
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+            >
+              Opponent ↗
+            </a>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function useGameOfTheWeekTitle() {
+  const {
+    gameMetaOverrides,
+    disabledOptionalGames,
+    season,
+    activeGameId,
+    scheduleGames,
+  } = useApp();
+  return useMemo(() => {
+    const visible = visibleScheduleGames(scheduleGames, disabledOptionalGames);
+    const year = Number(season) || undefined;
+    return gameSlotTitle(
+      mergeGameMeta(
+        resolveActiveGame(visible, activeGameId, undefined, year),
+        gameMetaOverrides,
+      ),
+    );
+  }, [
+    disabledOptionalGames,
+    gameMetaOverrides,
+    season,
+    activeGameId,
+    scheduleGames,
+  ]);
+}
+
 function MyRoomScoutScreen() {
   const { side, role, myGroups } = useMyRoomContext();
-  const { positionScoutReports, savePositionScoutReport } = useApp();
-  const canEdit = canEditContent(role);
+  const {
+    positionScoutReports,
+    savePositionScoutReport,
+    gameMetaOverrides,
+    disabledOptionalGames,
+    isArchiveMode,
+    scheduleGames,
+  } = useApp();
+  const canEdit = canEditContent(role, isArchiveMode);
   const [activeGroup, setActiveGroup] = useState(myGroups[0] ?? "");
   const [notes, setNotes] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+
+  const weekOptions = useMemo(() => {
+    return visibleScheduleGames(scheduleGames, disabledOptionalGames).map((g) =>
+      mergeGameMeta(g, gameMetaOverrides),
+    );
+  }, [disabledOptionalGames, gameMetaOverrides, scheduleGames]);
+
+  const nextGameId = useSiteActiveGameId();
+
+  const [selectedGameId, setSelectedGameId] = useState(nextGameId);
+
+  useEffect(() => {
+    setSelectedGameId(nextGameId);
+  }, [nextGameId]);
+
+  useEffect(() => {
+    if (
+      weekOptions.length > 0 &&
+      !weekOptions.some((g) => g.id === selectedGameId)
+    ) {
+      setSelectedGameId(weekOptions[0]!.id);
+    }
+  }, [weekOptions, selectedGameId]);
+
+  const selectedGame = useMemo(() => {
+    return (
+      weekOptions.find((g) => g.id === selectedGameId) ??
+      mergeGameMeta(
+        getNextUpcomingGame(visibleScheduleGames(scheduleGames, disabledOptionalGames)),
+        gameMetaOverrides,
+      )
+    );
+  }, [weekOptions, selectedGameId, gameMetaOverrides, disabledOptionalGames]);
+
+  const weekTitle = gameSlotTitle(selectedGame);
 
   useEffect(() => {
     if (!myGroups.includes(activeGroup)) {
@@ -4169,17 +7902,46 @@ function MyRoomScoutScreen() {
 
   useEffect(() => {
     if (!activeGroup) return;
-    const key = `${side}::${activeGroup}`;
-    const existing = positionScoutReports[key];
+    const existing = lookupPositionScoutReport(
+      positionScoutReports,
+      side,
+      activeGroup,
+      selectedGame.id,
+    );
     setNotes(existing?.notes ?? "");
     setFileName(existing?.fileName ?? null);
     setSavedFlash(false);
-  }, [side, activeGroup, positionScoutReports]);
+  }, [side, activeGroup, positionScoutReports, selectedGame.id]);
 
   function save() {
     if (!activeGroup) return;
-    savePositionScoutReport(side, activeGroup, { notes, fileName });
+    savePositionScoutReport(
+      side,
+      activeGroup,
+      { notes, fileName },
+      selectedGame.id,
+    );
     setSavedFlash(true);
+  }
+
+  async function onAttachFile(file: File | undefined) {
+    if (!file) {
+      setFileName(null);
+      return;
+    }
+    setFileName(file.name);
+    const isText =
+      file.type.startsWith("text/") ||
+      /\.(txt|md|csv|json)$/i.test(file.name);
+    if (!isText) return;
+    try {
+      const text = await file.text();
+      if (text.trim()) {
+        setNotes((prev) => (prev.trim() ? `${prev.trim()}\n\n${text.trim()}` : text.trim()));
+      }
+    } catch {
+      // Filename still saved; coach can paste manually
+    }
   }
 
   return (
@@ -4187,13 +7949,30 @@ function MyRoomScoutScreen() {
       <div className="space-y-4">
         <MyRoomHeader
           title="Weekly Scouting Report"
-          subtitle={`vs ${currentGame.opponent} · Week ${currentGame.week} · your position write-up`}
+          subtitle={`Position write-up for ${weekTitle} — quizzes generate from these notes`}
         />
+        <GameOfTheWeekPanel />
         <Panel title="Position scout">
           <p className="mb-3 text-sm text-[var(--cc-steel)]">
-            Add notes and a file for your group&apos;s look this week. Players in
-            your room can use this with install.
+            Paste or type this week&apos;s scouting report here. AI weekly quizzes
+            read these notes (not PDF/image bytes). Attach a .txt file to pull
+            text in automatically; for PDFs, paste the content below.
           </p>
+
+          <label className="mb-4 block text-sm">
+            <span className="font-semibold text-[var(--cc-navy)]">Week</span>
+            <select
+              value={selectedGame.id}
+              onChange={(e) => setSelectedGameId(e.target.value)}
+              className="mt-1 block w-full max-w-md rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm"
+            >
+              {weekOptions.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {gameSlotLabel(g)} · {gameSlotTitle(g)}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {myGroups.length > 1 ? (
             <div className="mb-4 flex flex-wrap gap-2">
@@ -4220,14 +7999,14 @@ function MyRoomScoutScreen() {
 
           <label className="block text-sm">
             <span className="font-semibold text-[var(--cc-navy)]">
-              Scout notes · {activeGroup || "group"}
+              Scout notes · {activeGroup || "group"} · Week {selectedGame.week}
             </span>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               disabled={!canEdit || !activeGroup}
-              rows={8}
-              placeholder="Tendencies, formations, keys, fit rules…"
+              rows={10}
+              placeholder="Paste the scouting report: tendencies, formations, keys, fit rules, alerts…"
               className="mt-1 w-full rounded-lg border border-[var(--cc-line)] px-3 py-2 disabled:bg-[var(--cc-field)]"
             />
           </label>
@@ -4236,14 +8015,14 @@ function MyRoomScoutScreen() {
             {canEdit ? (
               <>
                 <label className="cursor-pointer rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-sm font-semibold text-[var(--cc-navy)]">
-                  {fileName ? "Replace file" : "Attach PDF / doc"}
+                  {fileName ? "Replace file" : "Attach PDF / doc / txt"}
                   <input
                     type="file"
-                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt,.md,.csv"
                     className="hidden"
                     onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      setFileName(file?.name ?? null);
+                      void onAttachFile(e.target.files?.[0]);
+                      e.target.value = "";
                     }}
                   />
                 </label>
@@ -4277,91 +8056,289 @@ function MyRoomScoutScreen() {
 }
 
 function MyRoomQuizzesScreen() {
-  const { side, profile, myGroups, groupSet } = useMyRoomContext();
-  const { setPage } = useApp();
-  const myQuizzes = quizzes.filter(
-    (q) =>
-      q.side === side &&
-      (profile?.groups.includes("All D") ||
-        profile?.groups.includes("All O") ||
-        q.assignedGroups.some((g) => groupSet.has(g))),
-  );
+  const { myGroups, groupSet, role } = useMyRoomContext();
+  const {
+    setPage,
+    gameMetaOverrides,
+    disabledOptionalGames,
+    isArchiveMode,
+    scheduleGames,
+  } = useApp();
+  const canEdit = canEditContent(role, isArchiveMode);
+
+  const weekOptions = useMemo(() => {
+    return visibleScheduleGames(scheduleGames, disabledOptionalGames).map((g) =>
+      mergeGameMeta(g, gameMetaOverrides),
+    );
+  }, [disabledOptionalGames, gameMetaOverrides, scheduleGames]);
+
+  const nextGameId = useSiteActiveGameId();
+
+  const [selectedGameId, setSelectedGameId] = useState(nextGameId);
+
+  useEffect(() => {
+    setSelectedGameId(nextGameId);
+  }, [nextGameId]);
+
+  useEffect(() => {
+    if (
+      weekOptions.length > 0 &&
+      !weekOptions.some((g) => g.id === selectedGameId)
+    ) {
+      setSelectedGameId(weekOptions[0]!.id);
+    }
+  }, [weekOptions, selectedGameId]);
+
+  const selectedGame = useMemo(() => {
+    return (
+      weekOptions.find((g) => g.id === selectedGameId) ??
+      mergeGameMeta(
+        getNextUpcomingGame(visibleScheduleGames(scheduleGames, disabledOptionalGames)),
+        gameMetaOverrides,
+      )
+    );
+  }, [
+    weekOptions,
+    selectedGameId,
+    gameMetaOverrides,
+    disabledOptionalGames,
+    scheduleGames,
+  ]);
+
+  const weekTitle = gameSlotTitle(selectedGame);
 
   return (
     <MyRoomGate>
       <div className="space-y-4">
-        <MyRoomHeader title="Weekly Quizzes" />
+        <MyRoomHeader
+          title="Weekly Quizzes"
+          subtitle={
+            canEdit
+              ? `Scout, quiz, and quiz scores for ${weekTitle}`
+              : `Assigned quizzes for ${weekTitle}`
+          }
+        />
         <Panel
-          title={`Quizzes · ${myGroups.join(", ")}`}
+          title={
+            canEdit
+              ? `Coach sheet · ${myGroups.join(", ") || "Your groups"}`
+              : `Quizzes · ${myGroups.join(", ") || "Your groups"}`
+          }
           action={
-            <button
-              type="button"
-              onClick={() => setPage("quizzes")}
-              className="text-sm font-semibold text-[var(--cc-blue)]"
-            >
-              All quizzes →
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              {weekOptions.length > 0 ? (
+                <label className="flex items-center gap-1.5 text-xs text-[var(--cc-steel)]">
+                  <span className="font-semibold text-[var(--cc-navy)]">
+                    Week
+                  </span>
+                  <select
+                    value={selectedGame.id}
+                    onChange={(e) => setSelectedGameId(e.target.value)}
+                    className="rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-sm font-semibold text-[var(--cc-navy)]"
+                  >
+                    {weekOptions.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {gameSlotLabel(g)} · {g.opponent}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setPage("quizzes")}
+                className="text-sm font-semibold text-[var(--cc-blue)]"
+              >
+                All quizzes →
+              </button>
+            </div>
           }
         >
-          {myQuizzes.length === 0 ? (
-            <p className="text-sm text-[var(--cc-steel)]">
-              No quizzes assigned to your groups this week.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {myQuizzes.map((q) => (
-                <div
-                  key={q.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--cc-line)] p-4"
-                >
-                  <div>
-                    <p className="font-semibold text-[var(--cc-navy)]">
-                      {q.title}
-                    </p>
-                    <p className="mt-1 text-sm text-[var(--cc-steel)]">
-                      Due {q.due} · Groups: {q.assignedGroups.join(", ")} · Pass{" "}
-                      {q.passingScore}%
-                    </p>
-                  </div>
-                  <Chip>{q.status}</Chip>
-                </div>
-              ))}
-            </div>
-          )}
+          <WeeklyQuizWeekPanel
+            game={selectedGame}
+            myGroups={myGroups}
+            groupSet={groupSet}
+            compact
+            mode="my-stuff"
+            coachSheet={canEdit}
+          />
         </Panel>
       </div>
     </MyRoomGate>
   );
 }
 
+function gradeNameMatches(gradePlayer: string, athlete: Athlete) {
+  if (gradePlayer === athlete.name) return true;
+  if (gradePlayer === athleteLastFirst(athlete)) return true;
+  const last = athlete.lastName?.trim();
+  if (last && gradePlayer.toLowerCase().includes(last.toLowerCase())) {
+    return true;
+  }
+  return false;
+}
+
 function MyRoomGradesScreen() {
-  const { myGroups, groupSet } = useMyRoomContext();
-  const { setPage } = useApp();
-  const myGrades = grades.filter((g) => groupSet.has(g.group));
+  const { myGroups, groupSet, role } = useMyRoomContext();
+  const {
+    setPage,
+    gradeRows,
+    upsertPlayerGrade,
+    roster,
+    gameMetaOverrides,
+    disabledOptionalGames,
+    isArchiveMode,
+    scheduleGames,
+  } = useApp();
+  const canEdit = canEditContent(role, isArchiveMode);
+
+  const weekOptions = useMemo(() => {
+    return visibleScheduleGames(scheduleGames, disabledOptionalGames).map((g) =>
+      mergeGameMeta(g, gameMetaOverrides),
+    );
+  }, [disabledOptionalGames, gameMetaOverrides, scheduleGames]);
+
+  const nextGameId = useSiteActiveGameId();
+
+  const [selectedGameId, setSelectedGameId] = useState(nextGameId);
+
+  useEffect(() => {
+    setSelectedGameId(nextGameId);
+  }, [nextGameId]);
+
+  useEffect(() => {
+    if (
+      weekOptions.length > 0 &&
+      !weekOptions.some((g) => g.id === selectedGameId)
+    ) {
+      setSelectedGameId(weekOptions[0]!.id);
+    }
+  }, [weekOptions, selectedGameId]);
+
+  const selectedGame = useMemo(() => {
+    return (
+      weekOptions.find((g) => g.id === selectedGameId) ??
+      mergeGameMeta(
+        getNextUpcomingGame(
+          visibleScheduleGames(scheduleGames, disabledOptionalGames),
+        ),
+        gameMetaOverrides,
+      )
+    );
+  }, [
+    weekOptions,
+    selectedGameId,
+    gameMetaOverrides,
+    disabledOptionalGames,
+    scheduleGames,
+  ]);
+
+  const weekNum = selectedGame.week;
+  const weekTitle = gameSlotTitle(selectedGame);
+
+  const displayRows = useMemo(() => {
+    const weekMatches = (w: number) =>
+      w === weekNum || (weekNum <= 1 && w === 0);
+
+    const athletes = roster
+      .filter(
+        (a) =>
+          (a.personnelType ?? "athlete") === "athlete" &&
+          a.groups.some((g) => groupSet.has(migrateGroupAbbreviation(g))),
+      )
+      .sort(compareByLastName);
+
+    const rows: {
+      key: string;
+      athleteId: string;
+      playerKey: string;
+      displayName: string;
+      group: string;
+      week: number;
+      practice: number;
+      game: number;
+      pride: GradeRow["pride"];
+    }[] = [];
+
+    for (const a of athletes) {
+      for (const raw of a.groups) {
+        const group = migrateGroupAbbreviation(raw);
+        if (!groupSet.has(group)) continue;
+        const found = gradeRows.find(
+          (r) =>
+            gradeNameMatches(r.player, a) &&
+            migrateGroupAbbreviation(r.group) === group &&
+            weekMatches(r.week),
+        );
+        rows.push({
+          key: `${a.id}-${group}`,
+          athleteId: a.id,
+          playerKey: found?.player ?? a.name,
+          displayName: athleteLastFirst(a),
+          group,
+          week: found?.week ?? weekNum,
+          practice: found?.practice ?? 0,
+          game: found?.game ?? 0,
+          pride: found?.pride ?? "C",
+        });
+      }
+    }
+    return rows;
+  }, [roster, groupSet, gradeRows, weekNum]);
 
   return (
     <MyRoomGate>
       <div className="space-y-4">
-        <MyRoomHeader title="Player Grades" />
+        <MyRoomHeader
+          title="Player Grades"
+          subtitle={`Group grades for ${weekTitle}`}
+        />
+        <GameOfTheWeekPanel />
         <Panel
-          title={`Grades · ${myGroups.join(", ")}`}
+          title={`Grades · ${myGroups.join(", ") || "Your groups"}`}
           action={
-            <button
-              type="button"
-              onClick={() => setPage("grades")}
-              className="text-sm font-semibold text-[var(--cc-blue)]"
-            >
-              Full grades →
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              {weekOptions.length > 0 ? (
+                <label className="flex items-center gap-1.5 text-xs text-[var(--cc-steel)]">
+                  <span className="font-semibold text-[var(--cc-navy)]">
+                    Week
+                  </span>
+                  <select
+                    value={selectedGame.id}
+                    onChange={(e) => setSelectedGameId(e.target.value)}
+                    className="rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-sm font-semibold text-[var(--cc-navy)]"
+                  >
+                    {weekOptions.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {gameSlotLabel(g)} · {g.opponent}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setPage("grades")}
+                className="text-sm font-semibold text-[var(--cc-blue)]"
+              >
+                Full grades →
+              </button>
+            </div>
           }
         >
-          {myGrades.length === 0 ? (
+          <p className="mb-3 text-sm text-[var(--cc-steel)]">
+            Practice 0–10 · Game 0–100 · Cougar Pride A–F
+            {canEdit
+              ? " — edit scores for your assigned position groups."
+              : "."}
+          </p>
+          {displayRows.length === 0 ? (
             <p className="text-sm text-[var(--cc-steel)]">
-              No grades entered for your groups yet.
+              No athletes in your assigned groups yet.
             </p>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-[var(--cc-line)]">
-              <table className="w-full text-left text-sm">
+            <div className="overflow-x-auto rounded-xl border border-[var(--cc-line)]">
+              <table className="w-full min-w-[36rem] text-left text-sm">
                 <thead className="bg-[var(--cc-field)] text-[var(--cc-steel)]">
                   <tr>
                     <th className="px-3 py-2">Player</th>
@@ -4372,18 +8349,117 @@ function MyRoomGradesScreen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {myGrades.map((g) => (
+                  {displayRows.map((row) => (
                     <tr
-                      key={g.player}
+                      key={row.key}
                       className="border-t border-[var(--cc-line)]"
                     >
-                      <td className="px-3 py-3 font-medium text-[var(--cc-navy)]">
-                        <PlayerNameLink name={g.player} />
+                      <td className="whitespace-nowrap px-3 py-2 font-medium text-[var(--cc-navy)]">
+                        <PlayerNameLink
+                          id={row.athleteId}
+                          name={row.displayName}
+                        />
                       </td>
-                      <td className="px-3 py-3">{g.group}</td>
-                      <td className="px-3 py-3">{g.practice}</td>
-                      <td className="px-3 py-3">{g.game || "—"}</td>
-                      <td className="px-3 py-3">{g.pride}</td>
+                      <td className="px-3 py-2 text-[var(--cc-steel)]">
+                        {row.group}
+                      </td>
+                      <td className="px-3 py-2">
+                        {canEditPositionGroup(
+                          role,
+                          row.group,
+                          groupSet,
+                          isArchiveMode,
+                        ) ? (
+                          <input
+                            type="number"
+                            min={0}
+                            max={10}
+                            value={row.practice}
+                            onChange={(e) => {
+                              const practice = Math.min(
+                                10,
+                                Math.max(0, Number(e.target.value) || 0),
+                              );
+                              upsertPlayerGrade(
+                                {
+                                  player: row.playerKey,
+                                  group: row.group,
+                                  week: row.week,
+                                },
+                                { practice },
+                              );
+                            }}
+                            className="w-16 rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-[var(--cc-navy)]"
+                          />
+                        ) : (
+                          row.practice
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {canEditPositionGroup(
+                          role,
+                          row.group,
+                          groupSet,
+                          isArchiveMode,
+                        ) ? (
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={row.game}
+                            onChange={(e) => {
+                              const game = Math.min(
+                                100,
+                                Math.max(0, Number(e.target.value) || 0),
+                              );
+                              upsertPlayerGrade(
+                                {
+                                  player: row.playerKey,
+                                  group: row.group,
+                                  week: row.week,
+                                },
+                                { game },
+                              );
+                            }}
+                            className="w-16 rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-[var(--cc-navy)]"
+                          />
+                        ) : (
+                          row.game || "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {canEditPositionGroup(
+                          role,
+                          row.group,
+                          groupSet,
+                          isArchiveMode,
+                        ) ? (
+                          <select
+                            value={row.pride}
+                            onChange={(e) =>
+                              upsertPlayerGrade(
+                                {
+                                  player: row.playerKey,
+                                  group: row.group,
+                                  week: row.week,
+                                },
+                                {
+                                  pride: e.target.value as GradeRow["pride"],
+                                },
+                              )
+                            }
+                            className="rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-[var(--cc-navy)]"
+                          >
+                            {(["A", "B", "C", "D", "F"] as const).map((p) => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          row.pride
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -4529,11 +8605,11 @@ const DEFENSE_POS_SORTS: { id: string; label: string; codes: string[] | null }[]
 
 const OFFENSE_POS_ORDER = ["OL", "QB", "RB", "TE", "WR"];
 
-function sidePositionSorts(side: Side, offenseCodes: string[]) {
+function sidePositionSorts(side: Side, groupCodes: string[]) {
   if (side === "defense") return DEFENSE_POS_SORTS;
   return [
     { id: "all", label: "All", codes: null as string[] | null },
-    ...offenseCodes
+    ...groupCodes
       .slice()
       .sort(
         (a, b) =>
@@ -4552,6 +8628,11 @@ function positionSortRank(side: Side, group: string) {
   const code = migrateGroupAbbreviation(group);
   if (side === "defense") {
     const order = ["DL", "LB", "DB"];
+    const i = order.indexOf(code);
+    return i === -1 ? 99 : i;
+  }
+  if (side === "specialTeams") {
+    const order = ["ST", "K"];
     const i = order.indexOf(code);
     return i === -1 ? 99 : i;
   }
@@ -4642,33 +8723,33 @@ function UnitGameGoalsOverall({
   goals,
   cells,
   onToggle,
+  editAction,
 }: {
   unitLabel: string;
   goals: UnitGoal[];
   cells: Record<string, GoalCellValue>;
   onToggle: (key: string) => void;
+  editAction?: React.ReactNode;
 }) {
-  const { gameMetaOverrides, disabledOptionalGames } = useApp();
-  const regularWeeks = Array.from({ length: 10 }, (_, i) => {
-    const week = i + 1;
-    const base = games.find((g) => g.id === `w${week}`) ?? null;
-    return base ? mergeGameMeta(base, gameMetaOverrides) : null;
-  }).filter((g): g is Game => g !== null);
-
-  const visible = visibleScheduleGames(disabledOptionalGames).map((g) =>
-    mergeGameMeta(g, gameMetaOverrides),
+  const { gameMetaOverrides, disabledOptionalGames, scheduleGames } = useApp();
+  const weekGames = useMemo(
+    () =>
+      visibleScheduleGames(scheduleGames, disabledOptionalGames).map((g) =>
+        mergeGameMeta(g, gameMetaOverrides),
+      ),
+    [disabledOptionalGames, gameMetaOverrides, scheduleGames],
   );
-  const scrimmages = visible.filter((g) => g.kind === "scrimmage");
-  const playoffs = visible.filter((g) => g.kind === "playoff");
-  const weekGames = [...scrimmages, ...regularWeeks, ...playoffs];
 
   return (
     <Panel
       title={`${unitLabel} Game Goals · Overall`}
       action={
-        <p className="text-xs text-[var(--cc-steel)]">
-          Scrimmages · Weeks 1–10 · playoffs · yes ✓ → no ✕ → clear
-        </p>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <p className="text-xs text-[var(--cc-steel)]">
+            Same weeks as Schedule · yes ✓ → no ✕ → clear
+          </p>
+          {editAction}
+        </div>
       }
     >
       {goals.length === 0 ? (
@@ -4748,7 +8829,16 @@ function UnitGoalsEditor({
     useApp();
 
   return (
-    <Panel title={`Edit ${unitLabel} goals`}>
+    <Panel
+      title={`Edit ${unitLabel} goals`}
+      action={
+        <ImportFromArchiveButton
+          presetCategories={["unitGoals"]}
+          sideScope="current"
+          label="Add goals from archive"
+        />
+      }
+    >
       <p className="mb-3 text-sm text-[var(--cc-steel)]">
         Admins and coordinators can add, edit, reorder, or remove team goals.
         Changes apply to every week and the overall tracker.
@@ -4826,30 +8916,147 @@ function TeamGradesWeekContent({
   goalCells: Record<string, GoalCellValue>;
   onToggleGoal: (key: string) => void;
 }) {
-  const { offenseGroupCodes } = useApp();
+  const {
+    offenseGroupCodes,
+    defenseGroupCodes,
+    specialTeamsGroupCodes,
+    gradeRows,
+    upsertPlayerGrade,
+    roster,
+    coachAssignments,
+    isArchiveMode,
+  } = useApp();
   const [posFilter, setPosFilter] = useState("all");
-  const sorts = sidePositionSorts(side, offenseGroupCodes);
+  const sorts = sidePositionSorts(
+    side,
+    side === "specialTeams" ? specialTeamsGroupCodes : offenseGroupCodes,
+  );
 
-  const weekRows = grades.filter((row) => {
-    const group = migrateGroupAbbreviation(row.group);
-    return (
-      sideGroups.has(group) &&
-      (row.week === game.week || (game.week === 1 && row.week === 0))
-    );
-  });
-  const weekAvg = unitGradeAverages(weekRows);
+  const canEdit = canEditContent(role, isArchiveMode);
+  const profile = myRoomProfile(role, side, coachAssignments);
+  const editableGroups = useMemo(() => {
+    const assigned = profile
+      ? expandCoachGroupsWith(
+          profile.groups,
+          profile.side,
+          offenseGroupCodes,
+          defenseGroupCodes,
+        )
+      : [];
+    return editablePositionGroupSet(role, assigned, sideGroups, isArchiveMode);
+  }, [
+    role,
+    profile,
+    sideGroups,
+    offenseGroupCodes,
+    defenseGroupCodes,
+    isArchiveMode,
+  ]);
 
-  const filteredRows = weekRows
+  const weekGradeRows = useMemo(
+    () =>
+      gradeRows.filter((row) => {
+        const group = migrateGroupAbbreviation(row.group);
+        return (
+          sideGroups.has(group) &&
+          (row.week === game.week || (game.week === 1 && row.week === 0))
+        );
+      }),
+    [gradeRows, sideGroups, game.week],
+  );
+  const weekAvg = unitGradeAverages(weekGradeRows);
+
+  const demoPlayer = role === "player" ? findDemoPlayerAthlete(roster) : undefined;
+
+  const displayRows = useMemo(() => {
+    const weekMatches = (w: number) =>
+      w === game.week || (game.week === 1 && w === 0);
+
+    const athletes = roster
+      .filter(
+        (a) =>
+          (a.personnelType ?? "athlete") === "athlete" &&
+          a.groups.some((g) =>
+            sideGroups.has(migrateGroupAbbreviation(g)),
+          ),
+      )
+      .sort(compareByLastName);
+
+    const rows: {
+      key: string;
+      athleteId: string;
+      playerKey: string;
+      displayName: string;
+      group: string;
+      week: number;
+      practice: number;
+      game: number;
+      pride: GradeRow["pride"];
+    }[] = [];
+
+    const matchedKeys = new Set<string>();
+
+    for (const a of athletes) {
+      for (const raw of a.groups) {
+        const group = migrateGroupAbbreviation(raw);
+        if (!sideGroups.has(group)) continue;
+        const found = gradeRows.find(
+          (r) =>
+            gradeNameMatches(r.player, a) &&
+            migrateGroupAbbreviation(r.group) === group &&
+            weekMatches(r.week),
+        );
+        if (found) {
+          matchedKeys.add(
+            `${found.player}::${migrateGroupAbbreviation(found.group)}::${found.week}`,
+          );
+        }
+        rows.push({
+          key: `${a.id}-${group}`,
+          athleteId: a.id,
+          playerKey: found?.player ?? a.name,
+          displayName: athleteLastFirst(a),
+          group,
+          week: found?.week ?? game.week,
+          practice: found?.practice ?? 0,
+          game: found?.game ?? 0,
+          pride: found?.pride ?? "C",
+        });
+      }
+    }
+
+    // Keep orphan grade rows (no roster match) visible for the week/unit.
+    for (const r of weekGradeRows) {
+      const group = migrateGroupAbbreviation(r.group);
+      const key = `${r.player}::${group}::${r.week}`;
+      if (matchedKeys.has(key)) continue;
+      rows.push({
+        key: `orphan-${key}`,
+        athleteId: "",
+        playerKey: r.player,
+        displayName: r.player,
+        group,
+        week: r.week,
+        practice: r.practice,
+        game: r.game,
+        pride: r.pride,
+      });
+    }
+
+    return rows;
+  }, [roster, sideGroups, gradeRows, weekGradeRows, game.week]);
+
+  const filteredRows = displayRows
     .filter((row) => {
       const selected = sorts.find((s) => s.id === posFilter);
       if (!selected?.codes) return true;
-      return selected.codes.includes(migrateGroupAbbreviation(row.group));
+      return selected.codes.includes(row.group);
     })
     .sort((a, b) => {
       const rank =
         positionSortRank(side, a.group) - positionSortRank(side, b.group);
       if (rank !== 0) return rank;
-      return a.player.localeCompare(b.player);
+      return a.displayName.localeCompare(b.displayName);
     });
 
   return (
@@ -4929,17 +9136,23 @@ function TeamGradesWeekContent({
             ))}
           </div>
         </div>
-        {weekRows.length === 0 ? (
+        {canEdit ? (
+          <p className="mb-2 text-sm text-[var(--cc-steel)]">
+            Practice 0–10 · Game 0–100 · Cougar Pride A–F — edit scores for your
+            assigned position groups.
+          </p>
+        ) : null}
+        {displayRows.length === 0 ? (
           <p className="text-sm text-[var(--cc-steel)]">
-            No {unitLabel.toLowerCase()} grades entered for this week yet.
+            No {unitLabel.toLowerCase()} athletes or grades for this week yet.
           </p>
         ) : filteredRows.length === 0 ? (
           <p className="text-sm text-[var(--cc-steel)]">
             No grades for this position group this week.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-[var(--cc-line)]">
-            <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto rounded-xl border border-[var(--cc-line)]">
+            <table className="w-full min-w-[36rem] text-left text-sm">
               <thead className="bg-[var(--cc-field)] text-[var(--cc-steel)]">
                 <tr>
                   <th className="px-3 py-2 font-semibold">Player</th>
@@ -4950,27 +9163,124 @@ function TeamGradesWeekContent({
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((row) => (
-                  <tr
-                    key={`${row.player}-${row.group}-${row.week}`}
-                    className="border-t border-[var(--cc-line)]"
-                  >
-                    <td className="px-3 py-3 font-medium text-[var(--cc-navy)]">
-                      {role === "player" &&
-                      row.player !== "Jordan Martinez" ? (
-                        "—"
-                      ) : (
-                        <PlayerNameLink name={row.player} />
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-[var(--cc-steel)]">
-                      {migrateGroupAbbreviation(row.group)}
-                    </td>
-                    <td className="px-3 py-3">{row.practice}</td>
-                    <td className="px-3 py-3">{row.game || "—"}</td>
-                    <td className="px-3 py-3">{row.pride}</td>
-                  </tr>
-                ))}
+                {filteredRows.map((row) => {
+                  const rowEditable = canEditPositionGroup(
+                    role,
+                    row.group,
+                    editableGroups,
+                    isArchiveMode,
+                  );
+                  const hidePeerName =
+                    role === "player" &&
+                    (!demoPlayer || row.athleteId !== demoPlayer.id);
+                  return (
+                    <tr
+                      key={row.key}
+                      className="border-t border-[var(--cc-line)]"
+                    >
+                      <td className="whitespace-nowrap px-3 py-3 font-medium text-[var(--cc-navy)]">
+                        {hidePeerName ? (
+                          "—"
+                        ) : row.athleteId ? (
+                          <PlayerNameLink
+                            id={row.athleteId}
+                            name={row.displayName}
+                          />
+                        ) : (
+                          <PlayerNameLink name={row.displayName} />
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-[var(--cc-steel)]">
+                        {row.group}
+                      </td>
+                      <td className="px-3 py-3">
+                        {rowEditable ? (
+                          <input
+                            type="number"
+                            min={0}
+                            max={10}
+                            value={row.practice}
+                            onChange={(e) => {
+                              const practice = Math.min(
+                                10,
+                                Math.max(0, Number(e.target.value) || 0),
+                              );
+                              upsertPlayerGrade(
+                                {
+                                  player: row.playerKey,
+                                  group: row.group,
+                                  week: row.week,
+                                },
+                                { practice },
+                              );
+                            }}
+                            className="w-16 rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-[var(--cc-navy)]"
+                          />
+                        ) : (
+                          row.practice
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        {rowEditable ? (
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={row.game}
+                            onChange={(e) => {
+                              const gameVal = Math.min(
+                                100,
+                                Math.max(0, Number(e.target.value) || 0),
+                              );
+                              upsertPlayerGrade(
+                                {
+                                  player: row.playerKey,
+                                  group: row.group,
+                                  week: row.week,
+                                },
+                                { game: gameVal },
+                              );
+                            }}
+                            className="w-16 rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-[var(--cc-navy)]"
+                          />
+                        ) : (
+                          row.game || "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        {rowEditable ? (
+                          <select
+                            value={row.pride}
+                            onChange={(e) =>
+                              upsertPlayerGrade(
+                                {
+                                  player: row.playerKey,
+                                  group: row.group,
+                                  week: row.week,
+                                },
+                                {
+                                  pride: e.target
+                                    .value as GradeRow["pride"],
+                                },
+                              )
+                            }
+                            className="rounded-md border border-[var(--cc-line)] bg-white px-2 py-1 text-[var(--cc-navy)]"
+                          >
+                            {(["A", "B", "C", "D", "F"] as const).map(
+                              (p) => (
+                                <option key={p} value={p}>
+                                  {p}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        ) : (
+                          row.pride
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -4986,42 +9296,39 @@ function GradesScreen() {
     side,
     offenseGroupCodes,
     defenseGroupCodes,
+    specialTeamsGroupCodes,
     offenseGoals,
     defenseGoals,
+    isArchiveMode,
   } = useApp();
   const [goalCells, setGoalCells] = useState<Record<string, GoalCellValue>>(
     {},
   );
-  const unitLabel = side === "defense" ? "Defense" : "Offense";
+  const [editingGoals, setEditingGoals] = useState(false);
+  const unitLabel = sideLabel(side);
   const sideGroups = new Set(
-    side === "defense" ? defenseGroupCodes : offenseGroupCodes,
+    side === "specialTeams"
+      ? specialTeamsGroupCodes
+      : side === "defense"
+        ? defenseGroupCodes
+        : offenseGroupCodes,
   );
-  const goals = side === "defense" ? defenseGoals : offenseGoals;
-  const canEditGoals = canEditGameGoals(role);
+  const goals =
+    side === "specialTeams"
+      ? []
+      : side === "defense"
+        ? defenseGoals
+        : offenseGoals;
+  const canEditGoals =
+    canEditGameGoals(role) &&
+    side !== "specialTeams" &&
+    canEditContent(role, isArchiveMode);
 
   function toggleGoal(key: string) {
     setGoalCells((prev) => ({
       ...prev,
       [key]: cycleGoalCell(prev[key] ?? null),
     }));
-  }
-
-  if (role === "parent") {
-    return (
-      <Panel title="My Athlete">
-        <p className="text-sm text-[var(--cc-steel)]">
-          Summary only — no peer grades.
-        </p>
-        <div className="mt-4 rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-4">
-          <p className="font-semibold text-[var(--cc-navy)]">
-            Jordan Martinez · DL
-          </p>
-          <p className="mt-2 text-sm">
-            Practice 8/10 · Pride B · Quiz not started
-          </p>
-        </div>
-      </Panel>
-    );
   }
 
   return (
@@ -5049,9 +9356,20 @@ function GradesScreen() {
         goals={goals}
         cells={goalCells}
         onToggle={toggleGoal}
+        editAction={
+          canEditGoals ? (
+            <button
+              type="button"
+              onClick={() => setEditingGoals((v) => !v)}
+              className="rounded-lg border border-[var(--cc-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--cc-navy)] hover:bg-[var(--cc-field)]"
+            >
+              {editingGoals ? "Done" : "Edit"}
+            </button>
+          ) : null
+        }
       />
 
-      {canEditGoals ? (
+      {canEditGoals && editingGoals ? (
         <UnitGoalsEditor side={side} unitLabel={unitLabel} goals={goals} />
       ) : null}
     </div>
@@ -5060,11 +9378,12 @@ function GradesScreen() {
 
 function UnitHomeScreen() {
   const { side, setPage } = useApp();
+  const unit = sideLabel(side);
   return (
-    <Panel title={`${side === "defense" ? "Cougar Defense" : "Cougar Offense"}`}>
+    <Panel title={`Cougar ${unit}`}>
       <p className="text-lg text-[var(--cc-navy)]">{team.motto}</p>
       <p className="mt-2 text-sm text-[var(--cc-steel)]">
-        {team.season} Season · Varsity {side === "defense" ? "Defense" : "Offense"}
+        {team.season} Season · Varsity {unit}
       </p>
       <div className="mt-5 flex flex-wrap gap-2">
         <button
@@ -5220,6 +9539,7 @@ function MyGaDepthTable({
   schemeId,
   schemeLabel,
   groupFilter,
+  editableGroups,
   readOnly = false,
   board: boardProp,
   onSetDepthCell,
@@ -5232,6 +9552,11 @@ function MyGaDepthTable({
   schemeLabel: string;
   /** When set, only show columns whose position maps to these groups */
   groupFilter?: string[];
+  /**
+   * When set, only these groups' columns are editable (view still uses groupFilter).
+   * Admin/coordinator typically omit this; position coaches pass assigned groups.
+   */
+  editableGroups?: Set<string> | string[];
   /** Presentation mode — no drag/search edits */
   readOnly?: boolean;
   /** Controlled board (e.g. coach draft). Falls back to shared app board. */
@@ -5265,7 +9590,12 @@ function MyGaDepthTable({
     scheme?.schemeType === "Game Day" || scheme?.schemeType === "Practice"
       ? scheme.schemeType
       : "Practice";
-  const canEdit = !readOnly && !presentMode && canMoveDepthPlayers(role);
+  const canEditBoard = !readOnly && !presentMode && canMoveDepthPlayers(role);
+  const editGroupSet = editableGroups
+    ? editableGroups instanceof Set
+      ? editableGroups
+      : new Set(editableGroups)
+    : null;
   const [dragOver, setDragOver] = useState<{ row: number; col: number } | null>(
     null,
   );
@@ -5284,16 +9614,29 @@ function MyGaDepthTable({
       const allowed = new Set(groupFilter);
       return groupsForDepthPosition(pos).some((g) => allowed.has(g));
     });
-  const relevantCols = groupFilter?.length
-    ? visibleCols.map(({ col }) => col)
-    : undefined;
+  const relevantCols = editGroupSet
+    ? visibleCols
+        .filter(({ pos }) =>
+          groupsForDepthPosition(pos).some((g) => editGroupSet.has(g)),
+        )
+        .map(({ col }) => col)
+    : groupFilter?.length
+      ? visibleCols.map(({ col }) => col)
+      : undefined;
+
+  function columnEditable(pos: string) {
+    if (!canEditBoard) return false;
+    if (!editGroupSet) return true;
+    return groupsForDepthPosition(pos).some((g) => editGroupSet.has(g));
+  }
 
   function cellPayload(row: number, col: number) {
     return JSON.stringify({ teamIndex, schemeId, row, col });
   }
 
   function openPicker(row: number, col: number) {
-    if (!canEdit) return;
+    const pos = board.positions[col] ?? "";
+    if (!columnEditable(pos)) return;
     if (didDrag.current) {
       didDrag.current = false;
       return;
@@ -5360,6 +9703,8 @@ function MyGaDepthTable({
               <tr key={ri}>
                 {visibleCols.map(({ col: ci }) => {
                   const cell = row[ci];
+                  const pos = board.positions[ci] ?? "";
+                  const cellEditable = columnEditable(pos);
                   const isTarget =
                     dragOver?.row === ri && dragOver?.col === ci;
                   return (
@@ -5369,10 +9714,10 @@ function MyGaDepthTable({
                         isTarget
                           ? "bg-sky-100 ring-2 ring-inset ring-[var(--cc-blue)]"
                           : ""
-                      } ${canEdit ? "cursor-pointer" : ""}`}
+                      } ${cellEditable ? "cursor-pointer" : ""}`}
                       onClick={() => openPicker(ri, ci)}
                       onDragOver={(e) => {
-                        if (!canEdit) return;
+                        if (!cellEditable) return;
                         e.preventDefault();
                         e.dataTransfer.dropEffect = "move";
                         setDragOver({ row: ri, col: ci });
@@ -5383,7 +9728,7 @@ function MyGaDepthTable({
                         );
                       }}
                       onDrop={(e) => {
-                        if (!canEdit) return;
+                        if (!cellEditable) return;
                         e.preventDefault();
                         setDragOver(null);
                         didDrag.current = true;
@@ -5413,9 +9758,9 @@ function MyGaDepthTable({
                     >
                       {cell ? (
                         <div
-                          draggable={canEdit}
+                          draggable={cellEditable}
                           onDragStart={(e) => {
-                            if (!canEdit) return;
+                            if (!cellEditable) return;
                             didDrag.current = true;
                             e.dataTransfer.setData(
                               "application/depth-cell",
@@ -5430,7 +9775,7 @@ function MyGaDepthTable({
                             }, 0);
                           }}
                           className={`present-depth-name flex h-full min-h-8 items-center justify-center px-1 font-semibold text-zinc-900 ${
-                            canEdit
+                            cellEditable
                               ? "cursor-grab active:cursor-grabbing"
                               : ""
                           }`}
@@ -5438,21 +9783,28 @@ function MyGaDepthTable({
                             backgroundColor: classColors[cell.classYear],
                           }}
                           title={
-                            canEdit
-                              ? "Click to search · drag to move"
-                              : undefined
+                            cellEditable
+                              ? "Click name for profile · click square to search · drag to move"
+                              : "Click name for profile"
                           }
                         >
-                          {cell.name}
+                          <PlayerNameLink
+                            name={cell.name}
+                            className="font-semibold text-zinc-900 underline-offset-2 hover:underline"
+                          />
                         </div>
                       ) : (
                         <div
                           className={`flex h-full min-h-8 items-center justify-center bg-white text-[10px] text-zinc-300 ${
-                            canEdit ? "hover:bg-zinc-50 hover:text-zinc-400" : ""
+                            cellEditable
+                              ? "hover:bg-zinc-50 hover:text-zinc-400"
+                              : ""
                           }`}
-                          title={canEdit ? "Click to add athlete" : undefined}
+                          title={
+                            cellEditable ? "Click to add athlete" : undefined
+                          }
                         >
-                          {canEdit ? "+" : null}
+                          {cellEditable ? "+" : null}
                         </div>
                       )}
                     </td>
@@ -5721,7 +10073,11 @@ function ProgramSummaryScreen() {
     (a) => (a.personnelType ?? "athlete") === "support-staff",
   );
 
-  const teamColumns = [...teams, "No Team", "Total"];
+  const teamColumns = [
+    ...teams.map(abbreviateTeam),
+    "No Team",
+    "Total",
+  ];
   const teamsRows = [
     ...gradeRows.map((g) => {
       const inGrade = athletes.filter((a) => a.classYear === g);
@@ -5731,7 +10087,7 @@ function ProgramSummaryScreen() {
       const noTeam = inGrade.filter((a) => !a.teamLevel).length;
       const total = inGrade.length;
       return {
-        label: gradClassLabels[g],
+        label: abbreviateGrade(g),
         values: [...values, noTeam, total],
       };
     }),
@@ -5748,12 +10104,15 @@ function ProgramSummaryScreen() {
     },
   ];
 
-  const positionCols = ["Senior", "Junior", "Sophomore", "Freshman", "Total"];
   const positionGradeKeys: GradClass[] = [
     "senior",
     "junior",
     "sophomore",
     "freshman",
+  ];
+  const positionCols = [
+    ...positionGradeKeys.map(abbreviateGrade),
+    "Total",
   ];
   const positionsSorted = [...positionGroups].sort((a, b) =>
     a.name.localeCompare(b.name),
@@ -5807,153 +10166,6 @@ function ProgramSummaryScreen() {
         columns={positionCols}
         rows={positionRows}
       />
-    </div>
-  );
-}
-
-function ProgramPositionsScreen() {
-  const {
-    role,
-    positionGroups,
-    addPositionGroup,
-    updatePositionGroup,
-    removePositionGroup,
-  } = useApp();
-  const canEdit = canEditPositionGroups(role);
-
-  if (!canSeePersonnel(role)) {
-    return (
-      <Panel title="Positions">
-        <p className="text-sm text-[var(--cc-steel)]">
-          Positions are for coaches and above.
-        </p>
-      </Panel>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <Panel
-        title="Positions"
-        action={
-          canEdit ? (
-            <button
-              type="button"
-              onClick={addPositionGroup}
-              className="rounded-lg bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white"
-            >
-              Add position
-            </button>
-          ) : null
-        }
-      >
-        <p className="text-sm text-[var(--cc-steel)]">
-          Edit name, abbreviation, and type here — updates roster groups,
-          attendance filters, and Program → Groups across the site
-          {canEdit ? "." : " (Coach+ only to edit)."}
-        </p>
-
-        <div className="mt-4 space-y-3">
-          {positionGroups.length === 0 ? (
-            <p className="text-sm text-[var(--cc-steel)]">
-              No positions yet
-              {canEdit ? " — click Add position." : "."}
-            </p>
-          ) : (
-            positionGroups.map((pos) => (
-              <div
-                key={pos.id}
-                className="grid gap-3 rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-3 sm:grid-cols-[1.4fr_0.7fr_1fr_auto] sm:items-end"
-              >
-                <label className="text-sm">
-                  <span className="font-semibold text-[var(--cc-navy)]">
-                    Name
-                  </span>
-                  {canEdit ? (
-                    <input
-                      value={pos.name}
-                      onChange={(e) =>
-                        updatePositionGroup(pos.id, { name: e.target.value })
-                      }
-                      className="mt-1 w-full rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2"
-                    />
-                  ) : (
-                    <p className="mt-1 font-medium text-[var(--cc-navy)]">
-                      {pos.name}
-                    </p>
-                  )}
-                </label>
-                <label className="text-sm">
-                  <span className="font-semibold text-[var(--cc-navy)]">
-                    Abbreviation
-                  </span>
-                  {canEdit ? (
-                    <input
-                      value={pos.abbreviation}
-                      onChange={(e) =>
-                        updatePositionGroup(pos.id, {
-                          abbreviation: e.target.value,
-                        })
-                      }
-                      className="mt-1 w-full rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 uppercase"
-                    />
-                  ) : (
-                    <p className="mt-1 font-medium text-[var(--cc-navy)]">
-                      {pos.abbreviation}
-                    </p>
-                  )}
-                </label>
-                <label className="text-sm">
-                  <span className="font-semibold text-[var(--cc-navy)]">
-                    Position type
-                  </span>
-                  {canEdit ? (
-                    <select
-                      value={pos.type}
-                      onChange={(e) =>
-                        updatePositionGroup(pos.id, {
-                          type: e.target.value as PositionType,
-                        })
-                      }
-                      className="mt-1 w-full rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2"
-                    >
-                      {positionTypes.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="mt-1 font-medium text-[var(--cc-navy)]">
-                      {pos.type}
-                    </p>
-                  )}
-                </label>
-                {canEdit ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Delete ${pos.name} (${pos.abbreviation})?`,
-                        )
-                      ) {
-                        removePositionGroup(pos.id);
-                      }
-                    }}
-                    className="justify-self-start rounded-md border border-red-200 px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-700 hover:bg-red-50 sm:justify-self-end"
-                    aria-label={`Delete ${pos.name}`}
-                  >
-                    Delete
-                  </button>
-                ) : (
-                  <span />
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </Panel>
     </div>
   );
 }
@@ -6246,8 +10458,11 @@ function DepthChartsScreen() {
     depthChartPanels,
     setDepthChartPanels,
     presentMode,
-    setPresentMode,
-    setPage,
+    coachAssignments,
+    offenseGroupCodes,
+    defenseGroupCodes,
+    side,
+    isArchiveMode,
   } = useApp();
   const [selectedTeamIndexes, setSelectedTeamIndexes] = useState<number[]>(() =>
     [...new Set(depthChartPanels.map((p) => p.teamIndex))].sort((a, b) => a - b),
@@ -6267,10 +10482,25 @@ function DepthChartsScreen() {
   );
   const [editSchemesOpen, setEditSchemesOpen] = useState(false);
   const [editTeamIndex, setEditTeamIndex] = useState<number | null>(null);
-  const canEdit = canEditDepthConfig(role);
-  const canMove = canMoveDepthPlayers(role);
+  const canEdit =
+    canEditDepthConfig(role) && canEditContent(role, isArchiveMode);
+  const canMove = canMoveDepthPlayers(role) && canEditContent(role, isArchiveMode);
   const canEditLayout = canSeeDepthCharts(role);
-  const canManageSchemes = canMoveDepthPlayers(role);
+  const canManageSchemes =
+    canEditDepthConfig(role) && canEditContent(role, isArchiveMode);
+  const profile = myRoomProfile(role, side, coachAssignments);
+  const depthEditableGroups = useMemo(() => {
+    if (isCoordinatorOrAdmin(role)) return undefined;
+    const assigned = profile
+      ? expandCoachGroupsWith(
+          profile.groups,
+          profile.side,
+          offenseGroupCodes,
+          defenseGroupCodes,
+        )
+      : [];
+    return editablePositionGroupSet(role, assigned, undefined, isArchiveMode);
+  }, [role, profile, offenseGroupCodes, defenseGroupCodes, isArchiveMode]);
 
   useEffect(() => {
     setSelectedTeamIndexes((prev) =>
@@ -6348,20 +10578,12 @@ function DepthChartsScreen() {
       <div className="depth-print-hide flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold text-zinc-900">Depth Chart</h1>
         <div className="flex flex-wrap gap-2">
-          {!presentMode ? (
-            <button
-              type="button"
-              onClick={() => {
-                setPresentMode(true);
-                setPage("personnel-depth");
-                void document.documentElement.requestFullscreen?.().catch(
-                  () => undefined,
-                );
-              }}
-              className="rounded bg-[var(--cc-navy)] px-3 py-2 text-sm font-semibold text-white"
-            >
-              Show team
-            </button>
+          {canEdit ? (
+            <ImportFromArchiveButton
+              presetCategories={["depthBoards"]}
+              sideScope="current"
+              label="Add from archive"
+            />
           ) : null}
           <button
             type="button"
@@ -6458,7 +10680,7 @@ function DepthChartsScreen() {
         </div>
       </div>
 
-      {canEdit && !canManageMembers(role) ? (
+      {canEdit ? (
         <div className="depth-print-hide">
           <DepthConfigPanel />
         </div>
@@ -6547,6 +10769,7 @@ function DepthChartsScreen() {
                   teamIndex={panel.teamIndex}
                   schemeId={panel.schemeId}
                   schemeLabel={schemeLabel}
+                  editableGroups={depthEditableGroups}
                 />
               </div>
             );
@@ -6556,8 +10779,11 @@ function DepthChartsScreen() {
 
       <p className="depth-print-hide text-xs text-zinc-500">
         Charts start with 3 rows; putting anyone on the last row adds another.
+        {" Click a name to open their profile."}
         {canMove
-          ? " Click a square to search athletes by group · drag to move/swap (Coach+)."
+          ? isCoordinatorOrAdmin(role)
+            ? " Click a square to search athletes by group · drag to move/swap (Coach+)."
+            : " Edit only your assigned position-group columns · drag to move/swap."
           : ""}
       </p>
 
@@ -6572,7 +10798,6 @@ function DepthChartsScreen() {
 }
 
 const GRADE_OPTIONS: { id: GradClass; label: string }[] = [
-  { id: "alumni", label: "Alumni" },
   { id: "senior", label: "Senior" },
   { id: "junior", label: "Junior" },
   { id: "sophomore", label: "Sophomore" },
@@ -6696,7 +10921,7 @@ function MultiSelectDropdown({
   onChange,
   allLabel = "All",
 }: {
-  label: string;
+  label?: string;
   options: { value: string; label: string }[];
   selected: string[];
   onChange: (next: string[]) => void;
@@ -6734,11 +10959,13 @@ function MultiSelectDropdown({
 
   return (
     <div ref={rootRef} className="relative text-sm">
-      <p className="font-semibold text-[var(--cc-navy)]">{label}</p>
+      {label ? (
+        <p className="font-semibold text-[var(--cc-navy)]">{label}</p>
+      ) : null}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="mt-1 flex w-full items-center justify-between rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-left text-sm text-[var(--cc-navy)]"
+        className={`${label ? "mt-1" : ""} flex w-full items-center justify-between rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2 text-left text-sm text-[var(--cc-navy)]`}
       >
         <span className="truncate">{summary}</span>
         <span className="ml-2 shrink-0 text-[var(--cc-steel)]">
@@ -7069,7 +11296,9 @@ function CoachesRosterScreen() {
                       {canAdminFields ? (
                         <>
                           <td className="px-3 py-2 align-top text-[var(--cc-steel)]">
-                            {(m.assignedTeams ?? []).join(", ") || "—"}
+                            {(m.assignedTeams ?? [])
+                              .map(abbreviateTeam)
+                              .join(", ") || "—"}
                           </td>
                           <td className="px-3 py-2 align-top text-[var(--cc-steel)]">
                             {m.duties || "—"}
@@ -7226,9 +11455,27 @@ function PlayersScreen({
     teamNames,
     createMemberAccount,
     positionGroups,
+    coachAssignments,
+    offenseGroupCodes,
+    defenseGroupCodes,
+    side,
+    isArchiveMode,
   } = useApp();
-  const canEdit = canEditRoster(role);
-  const canAddAccounts = canCreatePlayerAccounts(role);
+  const canEdit = canEditRoster(role) && canEditContent(role, isArchiveMode);
+  const canAddAccounts =
+    canCreatePlayerAccounts(role) && canEditContent(role, isArchiveMode);
+  const profile = myRoomProfile(role, side, coachAssignments);
+  const rosterEditableGroups = useMemo(() => {
+    const assigned = profile
+      ? expandCoachGroupsWith(
+          profile.groups,
+          profile.side,
+          offenseGroupCodes,
+          defenseGroupCodes,
+        )
+      : [];
+    return editablePositionGroupSet(role, assigned, undefined, isArchiveMode);
+  }, [role, profile, offenseGroupCodes, defenseGroupCodes, isArchiveMode]);
   const [query, setQuery] = useState("");
   const [newFirst, setNewFirst] = useState("");
   const [newLast, setNewLast] = useState("");
@@ -7297,7 +11544,11 @@ function PlayersScreen({
         (isAthlete &&
           a.groups.some((g) => g.toLowerCase().includes(q))) ||
         a.classYear.toLowerCase().includes(q) ||
-        (a.teamLevel ?? "").toLowerCase().includes(q)
+        abbreviateGrade(a.classYear).toLowerCase().includes(q) ||
+        (a.teamLevel ?? "").toLowerCase().includes(q) ||
+        (a.teamLevel
+          ? abbreviateTeam(a.teamLevel).toLowerCase().includes(q)
+          : false)
       );
     })
     .slice()
@@ -7343,23 +11594,23 @@ function PlayersScreen({
           <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-3">
             <label className="text-sm">
               <span className="font-semibold text-[var(--cc-navy)]">
-                First name
-              </span>
-              <input
-                value={newFirst}
-                onChange={(e) => setNewFirst(e.target.value)}
-                placeholder="First"
-                className="mt-1 block w-36 rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2"
-              />
-            </label>
-            <label className="text-sm">
-              <span className="font-semibold text-[var(--cc-navy)]">
                 Last name
               </span>
               <input
                 value={newLast}
                 onChange={(e) => setNewLast(e.target.value)}
                 placeholder="Last"
+                className="mt-1 block w-36 rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="font-semibold text-[var(--cc-navy)]">
+                First name
+              </span>
+              <input
+                value={newFirst}
+                onChange={(e) => setNewFirst(e.target.value)}
+                placeholder="First"
                 className="mt-1 block w-36 rounded-lg border border-[var(--cc-line)] bg-white px-3 py-2"
               />
             </label>
@@ -7403,7 +11654,7 @@ function PlayersScreen({
         ) : null}
       </Panel>
 
-      <div className="overflow-hidden rounded-xl border border-[var(--cc-line)] bg-white">
+      <div className="overflow-x-auto rounded-xl border border-[var(--cc-line)] bg-white">
         <table className="w-full min-w-[44rem] text-left text-sm">
           <thead className="bg-[var(--cc-field)] text-xs text-[var(--cc-steel)]">
             <tr>
@@ -7457,20 +11708,39 @@ function PlayersScreen({
           <tbody>
             {filtered.map((a) => (
               <tr key={a.id} className="border-t border-[var(--cc-line)]">
-                <td className="px-3 py-2 align-top">
-                  <PlayerNameLink id={a.id} name={a.name} />
+                <td className="whitespace-nowrap px-3 py-2 align-top">
+                  <PlayerNameLink id={a.id} name={athleteLastFirst(a)} />
                 </td>
                 {isAthlete ? (
                   <td className="px-3 py-2 align-top">
                     {canEdit ? (
                       <div className="flex max-w-md flex-wrap gap-1.5">
                         {positionGroups.map((pos) => {
-                          const on = a.groups.includes(pos.abbreviation);
+                          const code = migrateGroupAbbreviation(
+                            pos.abbreviation,
+                          );
+                          const on = a.groups.some(
+                            (g) => migrateGroupAbbreviation(g) === code,
+                          );
+                          const groupEditable = canEditPositionGroup(
+                            role,
+                            code,
+                            rosterEditableGroups,
+                            isArchiveMode,
+                          );
                           return (
                             <label
                               key={pos.id}
-                              title={pos.name}
-                              className={`inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold ${
+                              title={
+                                groupEditable
+                                  ? pos.name
+                                  : `${pos.name} (assigned coaches only)`
+                              }
+                              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold ${
+                                groupEditable
+                                  ? "cursor-pointer"
+                                  : "cursor-not-allowed opacity-60"
+                              } ${
                                 on
                                   ? "border-[var(--cc-blue)] bg-[var(--cc-blue)]/10 text-[var(--cc-blue)]"
                                   : "border-[var(--cc-line)] text-[var(--cc-steel)]"
@@ -7480,11 +11750,21 @@ function PlayersScreen({
                                 type="checkbox"
                                 className="sr-only"
                                 checked={on}
+                                disabled={!groupEditable}
                                 onChange={(e) => {
+                                  if (!groupEditable) return;
                                   const next = e.target.checked
-                                    ? [...a.groups, pos.abbreviation]
+                                    ? [
+                                        ...a.groups.filter(
+                                          (x) =>
+                                            migrateGroupAbbreviation(x) !==
+                                            code,
+                                        ),
+                                        pos.abbreviation,
+                                      ]
                                     : a.groups.filter(
-                                        (x) => x !== pos.abbreviation,
+                                        (x) =>
+                                          migrateGroupAbbreviation(x) !== code,
                                       );
                                   updateAthlete(a.id, {
                                     groups: next.length ? next : a.groups,
@@ -7521,8 +11801,8 @@ function PlayersScreen({
                       ))}
                     </select>
                   ) : (
-                    <span className="capitalize text-[var(--cc-navy)]">
-                      {a.classYear}
+                    <span className="text-[var(--cc-navy)]">
+                      {abbreviateGrade(a.classYear)}
                     </span>
                   )}
                 </td>
@@ -7546,7 +11826,7 @@ function PlayersScreen({
                       </select>
                     ) : (
                       <span className="text-[var(--cc-navy)]">
-                        {a.teamLevel ?? "Varsity"}
+                        {abbreviateTeam(a.teamLevel ?? "Varsity")}
                       </span>
                     )}
                   </td>
@@ -7789,7 +12069,7 @@ function AttendanceScreen({
         </div>
       </Panel>
 
-      <div className="overflow-hidden rounded-xl border border-[var(--cc-line)] bg-white">
+      <div className="overflow-x-auto rounded-xl border border-[var(--cc-line)] bg-white">
         <table className="w-full min-w-[36rem] text-left text-sm">
           <thead className="bg-[var(--cc-field)] text-xs uppercase tracking-wide text-[var(--cc-steel)]">
             <tr>
@@ -7819,12 +12099,12 @@ function AttendanceScreen({
                 const status = attendance[a.id];
                 return (
                   <tr key={a.id} className="border-t border-[var(--cc-line)]">
-                    <td className="px-3 py-2.5 font-medium text-[var(--cc-navy)]">
-                      <PlayerNameLink id={a.id} name={a.name} />
+                    <td className="whitespace-nowrap px-3 py-2.5 font-medium text-[var(--cc-navy)]">
+                      <PlayerNameLink id={a.id} name={athleteLastFirst(a)} />
                     </td>
                     {isAthlete ? (
                       <td className="px-3 py-2.5 text-[var(--cc-steel)]">
-                        {a.teamLevel ?? "Varsity"}
+                        {abbreviateTeam(a.teamLevel ?? "Varsity")}
                       </td>
                     ) : null}
                     {isAthlete ? (
@@ -7832,8 +12112,8 @@ function AttendanceScreen({
                         {a.groups.join(", ")}
                       </td>
                     ) : null}
-                    <td className="px-3 py-2.5 capitalize text-[var(--cc-steel)]">
-                      {a.classYear}
+                    <td className="px-3 py-2.5 text-[var(--cc-steel)]">
+                      {abbreviateGrade(a.classYear)}
                     </td>
                     <td className="px-3 py-2.5">
                       {canEdit ? (
@@ -8080,15 +12360,18 @@ function AttendanceReportScreen() {
                         key={person.id}
                         className="border-t border-[var(--cc-line)]"
                       >
-                        <td className="px-3 py-2.5 font-medium text-[var(--cc-navy)]">
-                          <PlayerNameLink id={person.id} name={person.name} />
+                        <td className="whitespace-nowrap px-3 py-2.5 font-medium text-[var(--cc-navy)]">
+                          <PlayerNameLink
+                            id={person.id}
+                            name={athleteLastFirst(person)}
+                          />
                         </td>
                         {showTeam ? (
                           <td className="px-3 py-2.5 text-[var(--cc-steel)]">
                             {(person.personnelType ?? "athlete") ===
                             "support-staff"
                               ? "—"
-                              : (person.teamLevel ?? "Varsity")}
+                              : abbreviateTeam(person.teamLevel ?? "Varsity")}
                           </td>
                         ) : null}
                         <td className="px-3 py-2.5 text-[var(--cc-steel)]">
@@ -8122,33 +12405,51 @@ function AttendanceReportScreen() {
 }
 
 export function ScreenRouter() {
-  const { page } = useApp();
+  const { page, role } = useApp();
 
   if (page === "this-week") return <ThisWeekScreen />;
-  if (page === "schedule") return <ScheduleScreen />;
-  if (page === "quizzes") return <QuizzesScreen />;
+  if (page === "schedule" || page === "admin-schedule") return <ScheduleScreen />;
+  if (page === "results") return <ResultsRedirectToSchedule />;
+  if (page === "quizzes") {
+    if (role === "player") return <QuizzesScreen />;
+    return <QuizzesScreen />;
+  }
   if (page === "groups" || page === "personnel-program-groups")
     return <GroupsScreen />;
-  if (page === "staff" || page === "admin-staff" || page === "admin-coach-groups")
-    return <AdminStaffScreen />;
+  if (
+    page === "admin-staff" ||
+    page === "admin-coach-groups" ||
+    page === "staff-responsibilities"
+  )
+    return <StaffScreen />;
+  if (page === "staff" || page === "staff-handbook")
+    return (
+      <StaffResourceScreen
+        title="Handbook"
+        blurb="Staff handbook, policies, and program expectations. Upload the current season PDF or doc here."
+      />
+    );
+  if (page === "staff-recruiting") return <StaffRecruitingScreen />;
+  if (page === "staff-issued-equipment") return <StaffIssuedEquipmentScreen />;
+  if (page === "staff-inventory") return <StaffStockInventoryScreen />;
   if (page === "admin" || page === "admin-branding")
     return <AdminScreen section="branding" />;
   if (page === "admin-members") return <AdminScreen section="members" />;
   if (page === "admin-teams") return <AdminTeamsScreen />;
-  if (page === "admin-schedule") return <AdminScheduleScreen />;
-  if (page === "admin-depth-settings") return <AdminDepthSettingsScreen />;
-  if (page === "admin-team-goals") return <AdminTeamGoalsScreen />;
+  if (page === "admin-program") return <AdminProgramScreen />;
+  if (page === "season-archives") return <ArchiveBrowseRedirect />;
+  if (page === "admin-depth-settings") return <DepthChartsScreen />;
+  if (page === "admin-team-goals") return <GradesScreen />;
   if (page === "account") return <AccountScreen />;
   if (page === "personnel-program-summary" || page === "personnel-program")
     return <ProgramSummaryScreen />;
-  if (page === "personnel-program-positions")
-    return <ProgramPositionsScreen />;
   if (
     page === "depth-charts" ||
     page === "personnel-depth" ||
     page === "personnel-program-depth"
   )
     return <DepthChartsScreen />;
+  if (page === "teach-resources") return <UnitResourcesScreen />;
   if (
     page === "personnel-roster-athletes" ||
     page === "personnel-players"
@@ -8171,8 +12472,12 @@ export function ScreenRouter() {
   if (page === "my-room-responsibles") return <MyRoomResponsiblesScreen />;
   if (page === "my-room-depth") return <MyRoomDepthScreen />;
   if (page === "my-room-scout") return <MyRoomScoutScreen />;
-  if (page === "my-room-quizzes") return <MyRoomQuizzesScreen />;
+  if (page === "my-room-quizzes") {
+    if (role === "player") return <QuizzesScreen />;
+    return <MyRoomQuizzesScreen />;
+  }
   if (page === "my-room-grades") return <MyRoomGradesScreen />;
+  if (page === "my-room-chat") return <MyRoomChatRedirect />;
   if (page === "grades") return <GradesScreen />;
   if (page === "unit-home") return <UnitHomeScreen />;
   if (page.startsWith("teach-")) return <TeachScreen kind={page} />;
@@ -8188,6 +12493,11 @@ export function AppShell() {
     page,
     setPage,
     season,
+    currentSeasonId,
+    viewingSeasonId,
+    setViewingSeason,
+    archivedSeasons,
+    isArchiveMode,
     openNavMenu,
     setOpenNavMenu,
     branding,
@@ -8209,15 +12519,36 @@ export function AppShell() {
     return () => document.documentElement.classList.remove("present-mode");
   }, [presentMode]);
 
-  async function enterPresent() {
-    setPresentMode(true);
-    setPage("personnel-depth");
-    try {
-      await document.documentElement.requestFullscreen();
-    } catch {
-      /* fullscreen optional */
+  useEffect(() => {
+    if (role !== "player") return;
+    if (page === "personnel-program-groups" || page === "groups") {
+      setPage("this-week");
+      return;
     }
-  }
+    if (page === "quizzes") {
+      setPage("my-room-quizzes");
+      return;
+    }
+    if (isUnitPage(page) && !canAccessUnitPage(role, page)) {
+      setPage("this-week");
+    }
+  }, [role, page, setPage]);
+
+  // Archive mode: keep users on role-allowed surfaces only (nav already scoped)
+  useEffect(() => {
+    if (!isArchiveMode) return;
+    if (isAdminPage(page) && page !== "admin-program") {
+      // Allow Program for admin delete; otherwise kick off other admin tools
+      if (role !== "admin") setPage("this-week");
+    }
+  }, [isArchiveMode, page, role, setPage]);
+
+  // Players cannot browse archives — return to live season.
+  useEffect(() => {
+    if (!isArchiveMode) return;
+    if (role === "admin" || role === "coordinator" || role === "coach") return;
+    setViewingSeason(currentSeasonId);
+  }, [isArchiveMode, role, currentSeasonId, setViewingSeason]);
 
   async function exitPresent() {
     setPresentMode(false);
@@ -8231,23 +12562,25 @@ export function AppShell() {
   }
 
   const programNav = programNavForRole(role);
-  const unitItems = unitMenuItems();
-  const roomItems = myRoomMenuItems();
-  const personalItems = personnelMenuItems(role);
+  const unitItems = unitMenuItemsForRole(role);
+  const teamUnits = teamMenuUnits();
+  const roomItems = myRoomMenuItems(role);
+  const staffItems = staffMenuItems(role);
   const adminItems = adminMenuItems(role);
-  const showUnitMenus =
-    !presentMode && role !== "fan" && role !== "parent";
+  const showUnitMenus = !presentMode;
   const showMyRoom = !presentMode && canSeeMyRoom(role);
-  const showPersonal = !presentMode && canSeePersonnel(role);
+  // Staff / admin chrome stays role-scoped; archive mode is read-only via canEdit
+  const showStaff = !presentMode && canSeeStaffRoom(role);
+  const showDepthInTeam = showUnitMenus && canSeeDepthCharts(role);
   const showAdmin = !presentMode && canSeeAdminMenu(role);
-  const [personnelSubmenu, setPersonnelSubmenu] = useState<string | null>(
-    null,
-  );
+  const [staffSubmenu, setStaffSubmenu] = useState<string | null>(null);
+  const [teamSubmenu, setTeamSubmenu] = useState<Side | null>(null);
 
   function pickUnitPage(nextSide: Side, nextPage: AppPage) {
     setSide(nextSide);
     setPage(nextPage);
     setOpenNavMenu(null);
+    setTeamSubmenu(null);
   }
 
   function pickMyRoomPage(nextPage: AppPage) {
@@ -8255,10 +12588,16 @@ export function AppShell() {
     setOpenNavMenu(null);
   }
 
-  function pickPersonalPage(nextPage: AppPage) {
+  function pickStaffPage(nextPage: AppPage) {
     setPage(nextPage);
     setOpenNavMenu(null);
-    setPersonnelSubmenu(null);
+    setStaffSubmenu(null);
+  }
+
+  function pickTeamDepthPage() {
+    setPage("personnel-depth");
+    setOpenNavMenu(null);
+    setTeamSubmenu(null);
   }
 
   function pickAdminPage(nextPage: AppPage) {
@@ -8266,10 +12605,26 @@ export function AppShell() {
     setOpenNavMenu(null);
   }
 
+  const seasonOptions = [
+    {
+      id: currentSeasonId,
+      label: `${currentSeasonId} (current)`,
+    },
+    // Staff can browse archived seasons; players stay on current.
+    ...(role === "admin" ||
+    role === "coordinator" ||
+    role === "coach"
+      ? archivedSeasons.map((a) => ({
+          id: a.id,
+          label: a.label,
+        }))
+      : []),
+  ];
+
   return (
     <div className="min-h-screen bg-[var(--cc-field)]">
       <header className="depth-print-hide relative z-50 border-b border-[var(--cc-line)] bg-[var(--cc-navy)] text-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-[90rem] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[var(--cc-blue)] font-bold">
               {branding.teamLogoUrl ? (
@@ -8289,6 +12644,7 @@ export function AppShell() {
               </p>
               <p className="text-xs text-white/70">
                 {branding.unit} · Season {season}
+                {isArchiveMode ? " · Archive" : ""}
                 {presentMode ? " · Workout board" : ""}
               </p>
             </div>
@@ -8304,13 +12660,6 @@ export function AppShell() {
               </button>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={() => void enterPresent()}
-                  className="rounded-md bg-[var(--cc-blue)] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[var(--cc-blue)]/90"
-                >
-                  Show team
-                </button>
                 <label className="text-xs text-white/70">
                   View as{" "}
                   <select
@@ -8325,17 +12674,25 @@ export function AppShell() {
                     ))}
                   </select>
                 </label>
-                <Link
-                  href="/fan"
-                  className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-semibold hover:bg-white/20"
-                >
-                  Open Fan page
-                </Link>
+                <label className="text-xs text-white/70">
+                  Season{" "}
+                  <select
+                    value={viewingSeasonId}
+                    onChange={(e) => setViewingSeason(e.target.value)}
+                    className="ml-1 rounded-md border-0 bg-white/10 px-2 py-1.5 text-sm text-white"
+                  >
+                    {seasonOptions.map((s) => (
+                      <option key={s.id} value={s.id} className="text-black">
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </>
             )}
           </div>
         </div>
-        <nav className="mx-auto flex max-w-6xl flex-wrap gap-1 px-4 pb-2">
+        <nav className="mx-auto flex max-w-[90rem] flex-wrap gap-1 px-4 pb-2 sm:px-6">
           {(presentMode
             ? [
                 { id: "this-week" as const, label: "This Week" },
@@ -8376,7 +12733,7 @@ export function AppShell() {
                     : "text-white/80 hover:bg-white/10"
                 }`}
               >
-                My Group ▾
+                My Stuff ▾
               </button>
               {openNavMenu === "my-room" && (
                 <div className="absolute top-full left-0 z-50 mt-1 min-w-[220px] rounded-xl border border-[var(--cc-line)] bg-white p-1 shadow-lg">
@@ -8399,84 +12756,42 @@ export function AppShell() {
             </div>
           )}
 
-          {showUnitMenus &&
-            (["offense", "defense"] as const).map((unit) => {
-              const open = openNavMenu === unit;
-              const active = side === unit && isUnitPage(page);
-              return (
-                <div key={unit} className="relative z-50">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenNavMenu(open ? null : unit)
-                    }
-                    className={`rounded-lg px-3 py-2 text-sm font-semibold capitalize whitespace-nowrap ${
-                      active
-                        ? "bg-white text-[var(--cc-navy)]"
-                        : "text-white/80 hover:bg-white/10"
-                    }`}
-                  >
-                    {unit} ▾
-                  </button>
-                  {open && (
-                    <div className="absolute top-full left-0 z-50 mt-1 min-w-[200px] rounded-xl border border-[var(--cc-line)] bg-white p-1 shadow-lg">
-                      {unitItems.map((item) => (
-                        <button
-                          key={`${unit}-${item.id}`}
-                          type="button"
-                          onClick={() => pickUnitPage(unit, item.id)}
-                          className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-[var(--cc-field)] ${
-                            side === unit && page === item.id
-                              ? "bg-[var(--cc-blue)]/10 text-[var(--cc-blue)]"
-                              : "text-[var(--cc-navy)]"
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-          {showPersonal && (
+          {showStaff && (
             <div className="relative z-50">
               <button
                 type="button"
                 onClick={() => {
-                  const next =
-                    openNavMenu === "personnel" ? null : "personnel";
+                  const next = openNavMenu === "staff" ? null : "staff";
                   setOpenNavMenu(next);
-                  if (!next) setPersonnelSubmenu(null);
+                  if (!next) setStaffSubmenu(null);
                 }}
                 className={`rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap ${
-                  isPersonnelPage(page)
+                  isStaffPage(page)
                     ? "bg-white text-[var(--cc-navy)]"
                     : "text-white/80 hover:bg-white/10"
                 }`}
               >
-                Personnel ▾
+                Staff ▾
               </button>
-              {openNavMenu === "personnel" && (
+              {openNavMenu === "staff" && (
                 <div className="absolute top-full left-0 z-50 mt-1 min-w-[200px] rounded-xl border border-[var(--cc-line)] bg-white p-1 shadow-lg">
-                  {personalItems.map((item) =>
+                  {staffItems.map((item) =>
                     item.children?.length ? (
                       <div
                         key={item.id}
                         className="relative"
-                        onMouseEnter={() => setPersonnelSubmenu(item.id)}
+                        onMouseEnter={() => setStaffSubmenu(item.id)}
                       >
                         <button
                           type="button"
                           onClick={() =>
-                            setPersonnelSubmenu((cur) =>
+                            setStaffSubmenu((cur) =>
                               cur === item.id ? null : item.id,
                             )
                           }
                           className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-[var(--cc-field)] ${
                             item.children.some((c) => page === c.id) ||
-                            personnelSubmenu === item.id
+                            staffSubmenu === item.id
                               ? "bg-[var(--cc-blue)]/10 text-[var(--cc-blue)]"
                               : "text-[var(--cc-navy)]"
                           }`}
@@ -8484,13 +12799,13 @@ export function AppShell() {
                           <span>{item.label}</span>
                           <span className="ml-3 text-[var(--cc-steel)]">▸</span>
                         </button>
-                        {personnelSubmenu === item.id && (
+                        {staffSubmenu === item.id && (
                           <div className="absolute top-0 left-full z-50 ml-1 min-w-[200px] rounded-xl border border-[var(--cc-line)] bg-white p-1 shadow-lg">
                             {item.children.map((child) => (
                               <button
                                 key={child.id}
                                 type="button"
-                                onClick={() => pickPersonalPage(child.id)}
+                                onClick={() => pickStaffPage(child.id)}
                                 className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-[var(--cc-field)] ${
                                   page === child.id
                                     ? "bg-[var(--cc-blue)]/10 text-[var(--cc-blue)]"
@@ -8507,11 +12822,12 @@ export function AppShell() {
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => pickPersonalPage(item.id)}
+                        onClick={() => pickStaffPage(item.id)}
                         className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-[var(--cc-field)] ${
                           page === item.id ||
-                          (item.id === "personnel-depth" &&
-                            page === "depth-charts")
+                          (item.id === "staff-responsibilities" &&
+                            (page === "admin-staff" ||
+                              page === "admin-coach-groups"))
                             ? "bg-[var(--cc-blue)]/10 text-[var(--cc-blue)]"
                             : "text-[var(--cc-navy)]"
                         }`}
@@ -8520,6 +12836,86 @@ export function AppShell() {
                       </button>
                     ),
                   )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showUnitMenus && (
+            <div className="relative z-50">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = openNavMenu === "team" ? null : "team";
+                  setOpenNavMenu(next);
+                  if (!next) setTeamSubmenu(null);
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap ${
+                  isUnitPage(page) || isDepthChartPage(page)
+                    ? "bg-white text-[var(--cc-navy)]"
+                    : "text-white/80 hover:bg-white/10"
+                }`}
+              >
+                Team ▾
+              </button>
+              {openNavMenu === "team" && (
+                <div className="absolute top-full left-0 z-50 mt-1 min-w-[180px] rounded-xl border border-[var(--cc-line)] bg-white p-1 shadow-lg">
+                  {showDepthInTeam ? (
+                    <button
+                      type="button"
+                      onClick={() => pickTeamDepthPage()}
+                      className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-[var(--cc-field)] ${
+                        isDepthChartPage(page)
+                          ? "bg-[var(--cc-blue)]/10 text-[var(--cc-blue)]"
+                          : "text-[var(--cc-navy)]"
+                      }`}
+                    >
+                      Depth Chart
+                    </button>
+                  ) : null}
+                  {teamUnits.map((unit) => (
+                    <div
+                      key={unit.id}
+                      className="relative"
+                      onMouseEnter={() => setTeamSubmenu(unit.id)}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTeamSubmenu((cur) =>
+                            cur === unit.id ? null : unit.id,
+                          )
+                        }
+                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-[var(--cc-field)] ${
+                          (side === unit.id && isUnitPage(page)) ||
+                          teamSubmenu === unit.id
+                            ? "bg-[var(--cc-blue)]/10 text-[var(--cc-blue)]"
+                            : "text-[var(--cc-navy)]"
+                        }`}
+                      >
+                        <span>{unit.label}</span>
+                        <span className="ml-3 text-[var(--cc-steel)]">▸</span>
+                      </button>
+                      {teamSubmenu === unit.id && (
+                        <div className="absolute top-0 left-full z-50 ml-1 min-w-[200px] rounded-xl border border-[var(--cc-line)] bg-white p-1 shadow-lg">
+                          {unitItems.map((item) => (
+                            <button
+                              key={`${unit.id}-${item.id}`}
+                              type="button"
+                              onClick={() => pickUnitPage(unit.id, item.id)}
+                              className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-[var(--cc-field)] ${
+                                side === unit.id && page === item.id
+                                  ? "bg-[var(--cc-blue)]/10 text-[var(--cc-blue)]"
+                                  : "text-[var(--cc-navy)]"
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -8579,16 +12975,35 @@ export function AppShell() {
         </nav>
       </header>
 
-      <main
-        className={`mx-auto px-4 py-6 ${presentMode ? "max-w-7xl" : "max-w-6xl"}`}
-      >
+      {isArchiveMode ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-950 sm:px-6">
+          Viewing archived season{" "}
+          <span className="font-semibold">{viewingSeasonId}</span>
+          {role === "admin" || role === "coordinator"
+            ? " — uploads and edits enabled for backfill."
+            : role === "player"
+              ? " — view-only (player-visible content)."
+              : role === "coach"
+                ? " — view-only (coach-scoped)."
+                : " — view-only."}{" "}
+          <button
+            type="button"
+            onClick={() => setViewingSeason(currentSeasonId)}
+            className="font-semibold text-[var(--cc-blue)] underline-offset-2 hover:underline"
+          >
+            Return to {currentSeasonId}
+          </button>
+        </div>
+      ) : null}
+
+      <main className="mx-auto max-w-[90rem] px-4 py-6 sm:px-6">
         <ScreenRouter />
       </main>
 
       <PlayerSettingsOverlay />
       <CoachSettingsOverlay />
 
-      <footer className="depth-print-hide mx-auto max-w-6xl px-4 pb-8 text-center text-xs text-[var(--cc-steel)]">
+      <footer className="depth-print-hide mx-auto max-w-[90rem] px-4 pb-8 text-center text-xs text-[var(--cc-steel)] sm:px-6">
         {presentMode
           ? "Cy Creek Football · Workout board"
           : "UI mock only · no real auth/uploads yet · works alongside Hudl"}

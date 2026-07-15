@@ -63,4 +63,41 @@ html.present-mode .present-depth .present-depth-name {
     break-after: auto;
     page-break-after: auto;
   }
+
+  .inventory-print-root {
+    width: 100%;
+  }
+
+  .recruiting-print-root {
+    width: 100%;
+  }
+
+  .recruiting-print-root > section {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+
+  .recruiting-print-root > section > div:first-child {
+    display: none !important;
+  }
+
+  .inventory-print-root input[type="number"],
+  .inventory-print-root input[type="text"],
+  .inventory-print-root input:not([type]) {
+    appearance: none;
+    -moz-appearance: textfield;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: black !important;
+    padding: 0 !important;
+  }
+
+  .inventory-print-root input[type="number"]::-webkit-outer-spin-button,
+  .inventory-print-root input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
 }

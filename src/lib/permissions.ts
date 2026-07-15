@@ -1,14 +1,83 @@
-import type { AppPage, Role } from "./types";
+import type { AppPage, Role, Side } from "./types";
 import { demoMemberIdForRole, isDemoPlayerAthlete } from "./mock";
 
 const staff: Role[] = ["admin", "coordinator", "coach"];
 
-export function canSeeScout(role: Role) {
-  return role !== "parent" && role !== "fan";
+export function canSeeScout(_role: Role) {
+  return true;
 }
 
-export function canEditContent(role: Role) {
+/**
+ * Content uploads / edits.
+ * Live season: admin, coordinator, coach.
+ * Archive browse: admin + coordinator may backfill (uploads / edits);
+ * coaches and players stay view-only.
+ */
+export function canEditContent(role: Role, archiveMode = false) {
+  if (archiveMode) {
+    return role === "admin" || role === "coordinator";
+  }
   return staff.includes(role);
+}
+
+/** Only program admins may delete archived seasons / archived items. */
+export function canDeleteArchivedSeason(role: Role) {
+  return role === "admin";
+}
+
+/** Unit coordinators and program admins — may edit any group on a unit. */
+export function isCoordinatorOrAdmin(role: Role) {
+  return role === "admin" || role === "coordinator";
+}
+
+/**
+ * Whether staff may edit content for a specific position-group abbreviation.
+ * Admin / coordinator: any group. Position coach: only `assignedGroups`
+ * (already expanded/migrated via expandCoachGroupsWith / migrateGroupAbbreviation).
+ */
+export function canEditPositionGroup(
+  role: Role,
+  group: string,
+  assignedGroups: Iterable<string>,
+  archiveMode = false,
+): boolean {
+  if (!canEditContent(role, archiveMode)) return false;
+  if (isCoordinatorOrAdmin(role)) return true;
+  if (role !== "coach") return false;
+  const allowed =
+    assignedGroups instanceof Set
+      ? assignedGroups
+      : new Set(assignedGroups);
+  return allowed.has(group);
+}
+
+/**
+ * Position groups this role may edit.
+ * Admin / coordinator → `unitGroups` when provided, else the full assigned set.
+ * Coach → intersection of assigned groups with `unitGroups` (or assigned only).
+ */
+export function editablePositionGroupSet(
+  role: Role,
+  assignedGroups: Iterable<string>,
+  unitGroups?: Iterable<string>,
+  archiveMode = false,
+): Set<string> {
+  if (!canEditContent(role, archiveMode)) return new Set();
+  if (isCoordinatorOrAdmin(role)) {
+    return unitGroups ? new Set(unitGroups) : new Set(assignedGroups);
+  }
+  if (role !== "coach") return new Set();
+  const assigned =
+    assignedGroups instanceof Set
+      ? assignedGroups
+      : new Set(assignedGroups);
+  if (!unitGroups) return new Set(assigned);
+  const unit = unitGroups instanceof Set ? unitGroups : new Set(unitGroups);
+  const out = new Set<string>();
+  for (const g of assigned) {
+    if (unit.has(g)) out.add(g);
+  }
+  return out;
 }
 
 export function canManageMembers(role: Role) {
@@ -19,18 +88,15 @@ export function canSeeStaffRoom(role: Role) {
   return staff.includes(role);
 }
 
-export function canSeeGradesDetail(role: Role) {
-  return role !== "fan";
+export function canSeeGradesDetail(_role: Role) {
+  return true;
 }
 
 export function canTakeQuizzes(role: Role) {
   return role === "player" || role === "coach" || role === "coordinator" || role === "admin";
 }
 
-export function defaultPageForRole(role: Role): AppPage {
-  if (role === "fan") return "schedule";
-  if (role === "parent") return "this-week";
-  if (role === "admin") return "this-week";
+export function defaultPageForRole(_role: Role): AppPage {
   return "this-week";
 }
 
@@ -43,8 +109,9 @@ export function canEditGameGoals(role: Role) {
   return role === "admin" || role === "coordinator";
 }
 
-/** Schedule event name / date / venue (preseason + games) */
-export function canEditScheduleMeta(role: Role) {
+/** Schedule event name / date / venue / results (preseason + games) */
+export function canEditScheduleMeta(role: Role, archiveMode = false) {
+  if (archiveMode) return role === "admin" || role === "coordinator";
   return role === "admin" || role === "coordinator";
 }
 
@@ -109,9 +176,9 @@ export function canSeeCoachesRoster(role: Role) {
   return staff.includes(role);
 }
 
-/** Staff (Admin / Coordinator / Coach) can edit Program → Positions */
+/** Admin + coordinators edit position definitions under Program → Groups */
 export function canEditPositionGroups(role: Role) {
-  return staff.includes(role);
+  return role === "admin" || role === "coordinator";
 }
 
 /** Admin-only staff profile fields (teams, duties, notes, athletic period) */
@@ -145,38 +212,39 @@ export function canMoveDepthPlayers(role: Role) {
   return staff.includes(role);
 }
 
-export function canSeeMyRoom(role: Role) {
+/** Full My Stuff suite (staff tools). */
+export function canSeeMyRoomStaff(role: Role) {
   return role === "coach" || role === "coordinator" || role === "admin";
 }
 
+/**
+ * My Stuff nav visibility. Players get My Stuff for Position Group (incl. chat).
+ */
+export function canSeeMyRoom(role: Role) {
+  return canSeeMyRoomStaff(role) || role === "player";
+}
+
+/** Who may read/send position-group chat. */
+export function canUseGroupChat(role: Role) {
+  return canSeeMyRoomStaff(role) || role === "player";
+}
+
 export function programNavForRole(role: Role): { id: AppPage; label: string }[] {
-  if (role === "fan") {
-    return [{ id: "schedule", label: "Schedule" }];
-  }
-  if (role === "parent") {
-    return [
-      { id: "this-week", label: "This Week" },
-      { id: "schedule", label: "Schedule" },
-      { id: "grades", label: "My Athlete" },
-    ];
-  }
   if (role === "player") {
     return [
       { id: "this-week", label: "This Week" },
       { id: "schedule", label: "Schedule" },
-      { id: "personnel-program-groups", label: "Groups" },
     ];
   }
-  const base: { id: AppPage; label: string }[] = [
+  return [
     { id: "this-week", label: "This Week" },
     { id: "schedule", label: "Schedule" },
   ];
-  return base;
 }
 
-/** Admin / Controls dropdown — program controls by role */
+/** Admin / Controls dropdown — admin-only program settings */
 export function canSeeAdminMenu(role: Role) {
-  return role === "admin" || role === "coordinator";
+  return role === "admin";
 }
 
 export function adminMenuLabel(_role: Role) {
@@ -189,18 +257,7 @@ export function adminMenuItems(role: Role): { id: AppPage; label: string }[] {
       { id: "admin-branding", label: "Branding" },
       { id: "admin-members", label: "Members" },
       { id: "admin-teams", label: "Teams" },
-      { id: "admin-schedule", label: "Schedule" },
-      { id: "admin-depth-settings", label: "Depth Chart Settings" },
-      { id: "admin-team-goals", label: "Team Goals" },
-      { id: "admin-staff", label: "Coaches Responsibilities" },
-    ];
-  }
-  if (role === "coordinator") {
-    return [
-      { id: "admin-schedule", label: "Schedule" },
-      { id: "admin-depth-settings", label: "Depth Chart Settings" },
-      { id: "admin-team-goals", label: "Team Goals" },
-      { id: "admin-staff", label: "Coaches Responsibilities" },
+      { id: "admin-program", label: "Program" },
     ];
   }
   return [];
@@ -212,105 +269,44 @@ export function isAdminPage(page: AppPage): boolean {
     page === "admin-branding" ||
     page === "admin-members" ||
     page === "admin-teams" ||
-    page === "admin-schedule" ||
-    page === "admin-depth-settings" ||
-    page === "admin-team-goals" ||
-    page === "admin-staff" ||
-    page === "admin-coach-groups"
+    page === "admin-program"
   );
+}
+
+/** Admin-only: set active schedule week / roll seasons */
+export function canManageProgramSeason(role: Role) {
+  return role === "admin";
+}
+
+/** Coordinators and admins may copy templates from an archived season into the live season. */
+export function canImportFromArchive(role: Role) {
+  return role === "admin" || role === "coordinator";
 }
 
 export function canAccessAdminPage(role: Role, page: AppPage): boolean {
   if (!isAdminPage(page)) return false;
-  if (role === "admin") return true;
-  if (role === "coordinator") {
-    return (
-      page === "admin-schedule" ||
-      page === "admin-depth-settings" ||
-      page === "admin-team-goals" ||
-      page === "admin-staff" ||
-      page === "admin-coach-groups"
-    );
-  }
-  return false;
+  return role === "admin";
 }
 
-/** Personnel dropdown (Coach+) */
-export function personnelMenuItems(role?: Role): {
-  id: AppPage;
-  label: string;
-  children?: { id: AppPage; label: string }[];
-}[] {
-  const rosterChildren: { id: AppPage; label: string }[] = [
-    { id: "personnel-roster-athletes", label: "Athletes" },
-    {
-      id: "personnel-roster-support",
-      label: "Student support staff",
-    },
-  ];
-  if (!role || canSeeCoachesRoster(role)) {
-    rosterChildren.push({
-      id: "personnel-roster-coaches",
-      label: "Coaches",
-    });
-  }
-
-  return [
-    { id: "personnel-depth", label: "Depth Chart" },
-    {
-      id: "personnel-attendance",
-      label: "Attendance",
-      children: [
-        { id: "personnel-attendance-athletes", label: "Athletes" },
-        {
-          id: "personnel-attendance-support",
-          label: "Student support staff",
-        },
-        { id: "personnel-report", label: "Report" },
-      ],
-    },
-    {
-      id: "personnel-players",
-      label: "Rosters",
-      children: rosterChildren,
-    },
-    {
-      id: "personnel-program",
-      label: "Program",
-      children: [
-        { id: "personnel-program-summary", label: "Summary" },
-        { id: "personnel-program-groups", label: "Groups" },
-        { id: "personnel-program-positions", label: "Positions" },
-      ],
-    },
-  ];
-}
-
-export function isPersonnelPage(page: AppPage): boolean {
+/** Depth Chart lives under Team ▾ (Coach+) */
+export function isDepthChartPage(page: AppPage): boolean {
   return (
     page === "depth-charts" ||
-    page === "personnel-players" ||
-    page === "personnel-roster-athletes" ||
-    page === "personnel-roster-support" ||
-    page === "personnel-roster-coaches" ||
     page === "personnel-depth" ||
-    page === "personnel-program" ||
-    page === "personnel-program-summary" ||
-    page === "personnel-program-groups" ||
-    page === "personnel-program-positions" ||
-    page === "personnel-attendance" ||
-    page === "personnel-attendance-athletes" ||
-    page === "personnel-attendance-support" ||
-    page === "personnel-report"
+    page === "personnel-program-depth"
   );
+}
+
+/** @deprecated Use isDepthChartPage — Personnel nav removed */
+export function isPersonnelPage(page: AppPage): boolean {
+  return isDepthChartPage(page);
 }
 
 export function isProgramPage(page: AppPage): boolean {
   return (
     page === "personnel-program" ||
     page === "personnel-program-summary" ||
-    page === "personnel-program-groups" ||
-    page === "personnel-program-positions"
+    page === "personnel-program-groups"
   );
 }
 
@@ -332,8 +328,92 @@ export function isAttendancePage(page: AppPage): boolean {
   );
 }
 
-/** My Group dropdown items (Coach / Coordinator / Admin) */
-export function myRoomMenuItems(): { id: AppPage; label: string }[] {
+/** Staff dropdown (Coach / Coordinator / Admin) */
+export function staffMenuItems(role?: Role): {
+  id: AppPage;
+  label: string;
+  children?: { id: AppPage; label: string }[];
+}[] {
+  const rosterChildren: { id: AppPage; label: string }[] = [
+    { id: "personnel-roster-athletes", label: "Athletes" },
+    {
+      id: "personnel-roster-support",
+      label: "Student support staff",
+    },
+  ];
+  if (!role || canSeeCoachesRoster(role)) {
+    rosterChildren.push({
+      id: "personnel-roster-coaches",
+      label: "Coaches",
+    });
+  }
+
+  return [
+    {
+      id: "personnel-attendance",
+      label: "Attendance",
+      children: [
+        { id: "personnel-attendance-athletes", label: "Athletes" },
+        {
+          id: "personnel-attendance-support",
+          label: "Student support staff",
+        },
+        { id: "personnel-report", label: "Report" },
+      ],
+    },
+    { id: "staff-recruiting", label: "Recruiting" },
+    {
+      id: "staff-inventory",
+      label: "Inventory",
+      children: [
+        { id: "staff-issued-equipment", label: "Issued Equipment" },
+        { id: "staff-inventory", label: "Inventory" },
+      ],
+    },
+    { id: "staff-handbook", label: "Handbook" },
+    { id: "staff-responsibilities", label: "Responsibilities" },
+    {
+      id: "personnel-players",
+      label: "Rosters",
+      children: rosterChildren,
+    },
+    {
+      id: "personnel-program",
+      label: "Program(s)",
+      children: [
+        { id: "personnel-program-summary", label: "Summary" },
+        { id: "personnel-program-groups", label: "Groups" },
+      ],
+    },
+  ];
+}
+
+export function isStaffPage(page: AppPage): boolean {
+  return (
+    page === "staff" ||
+    page === "staff-responsibilities" ||
+    page === "staff-handbook" ||
+    page === "staff-recruiting" ||
+    page === "staff-inventory" ||
+    page === "staff-issued-equipment" ||
+    page === "admin-staff" ||
+    page === "admin-coach-groups" ||
+    isAttendancePage(page) ||
+    isRosterPage(page) ||
+    isProgramPage(page)
+  );
+}
+
+/** My Stuff dropdown items — staff get the full suite; players get Position Group + Quizzes. */
+export function myRoomMenuItems(
+  role?: Role,
+): { id: AppPage; label: string }[] {
+  if (role === "player") {
+    return [
+      { id: "my-room-group", label: "Position Group" },
+      { id: "my-room-quizzes", label: "Quizzes" },
+    ];
+  }
   return [
     { id: "my-room-responsibles", label: "Responsibilities" },
     { id: "my-room-depth", label: "Depth Chart" },
@@ -348,7 +428,23 @@ export function isMyRoomPage(page: AppPage): boolean {
   return page.startsWith("my-room-");
 }
 
-/** Shared menu under each Offense / Defense dropdown */
+/** Display label for a unit side (Offense / Defense / Special Teams) */
+export function sideLabel(side: Side): string {
+  if (side === "defense") return "Defense";
+  if (side === "specialTeams") return "Special Teams";
+  return "Offense";
+}
+
+/** Units shown as separate sections under the Team nav dropdown */
+export function teamMenuUnits(): { id: Side; label: string }[] {
+  return [
+    { id: "offense", label: "Offense" },
+    { id: "defense", label: "Defense" },
+    { id: "specialTeams", label: "Special Teams" },
+  ];
+}
+
+/** Shared menu under each Offense / Defense / ST section in Team */
 export function unitMenuItems(): { id: AppPage; label: string }[] {
   return [
     { id: "teach-philosophy", label: "Philosophy" },
@@ -361,7 +457,36 @@ export function unitMenuItems(): { id: AppPage; label: string }[] {
     { id: "quizzes", label: "Weekly Quizzes" },
     { id: "grades", label: "Team Grades" },
     { id: "teach-playbook-builder", label: "Playbook Builder" },
+    { id: "teach-resources", label: "Resources" },
   ];
+}
+
+/** Player-facing Team ▾ unit pages (view-only; no Groups / install / grades / etc.) */
+const PLAYER_UNIT_MENU_IDS: AppPage[] = [
+  "teach-philosophy",
+  "teach-playbook",
+  "scout",
+  "stats",
+];
+
+/** Unit submenu filtered by role — players only see Philosophy / Playbook / Scout / Stats */
+export function unitMenuItemsForRole(role: Role): { id: AppPage; label: string }[] {
+  const all = unitMenuItems();
+  if (role === "player") {
+    return all.filter((item) => PLAYER_UNIT_MENU_IDS.includes(item.id));
+  }
+  return all;
+}
+
+/** Whether this role may open a unit Team page (deep-link guard) */
+export function canAccessUnitPage(role: Role, page: AppPage): boolean {
+  if (!isUnitPage(page)) return true;
+  if (role === "player") {
+    // Players take quizzes via My Stuff → Quizzes (my-room-quizzes → QuizzesScreen).
+    // Unit Weekly Quizzes stay hidden from Team nav.
+    return PLAYER_UNIT_MENU_IDS.includes(page);
+  }
+  return true;
 }
 
 export function isUnitPage(page: AppPage): boolean {
@@ -380,6 +505,4 @@ export const roleLabels: Record<Role, string> = {
   coordinator: "Coordinator",
   coach: "Coach",
   player: "Player",
-  parent: "Parent",
-  fan: "Fan (public)",
 };

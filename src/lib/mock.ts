@@ -28,6 +28,11 @@ function maxPrepsLinks(city: string, slug: string) {
       roster: `${base}/25-26/roster/`,
       stats: `${base}/25-26/stats/`,
     },
+    links2024: {
+      schedule: `${base}/24-25/schedule/`,
+      roster: `${base}/24-25/roster/`,
+      stats: `${base}/24-25/stats/`,
+    },
   };
 }
 
@@ -331,7 +336,7 @@ export const positionTypes: PositionType[] = [
   "Special Teams",
 ];
 
-/** Program → Positions seed (name, abbreviation, type) */
+/** Program → Groups position seed (name, abbreviation, type) */
 export const seedPositionGroups: PositionGroupDef[] = [
   { id: "pos-ol", name: "Offensive Line", abbreviation: "OL", type: "Offense" },
   { id: "pos-qb", name: "Quarter Back", abbreviation: "QB", type: "Offense" },
@@ -409,8 +414,8 @@ export const athleticPeriodOptions = [
   "None",
 ] as const;
 
-/** Custom athlete profile fields (equipment + guardian) */
-export type AthleteCustomFields = {
+/** Known custom athlete profile fields (equipment + guardian) */
+export type AthleteKnownCustomFields = {
   lockerNumber: string;
   helmetSize: string;
   shirtSize: string;
@@ -423,8 +428,35 @@ export type AthleteCustomFields = {
   guardianEmail: string;
 };
 
+/** Equipment + guardian answers, plus any Issued Equipment columns added at runtime */
+export type AthleteCustomFields = AthleteKnownCustomFields &
+  Record<string, string>;
+
+export type InventorySheetColumn = {
+  key: string;
+  label: string;
+};
+
+/** Default Issued Equipment columns (single source for sheet + profile) */
+export const defaultInventorySheetColumns: InventorySheetColumn[] = [
+  { key: "lockerNumber", label: "Locker #" },
+  { key: "shirtSize", label: "Shirt Size" },
+  { key: "girdleSize", label: "Girdle Size" },
+  { key: "cleatSize", label: "Cleat Size" },
+  { key: "helmetSize", label: "Helmet Size" },
+  { key: "shortSize", label: "Short Size" },
+  { key: "pantSize", label: "Pant Size" },
+];
+
+/** Built-in parent/guardian fields (not part of Issued Equipment) */
+export const athleteGuardianFieldKeys = [
+  "guardianName",
+  "guardianNumber",
+  "guardianEmail",
+] as const;
+
 export const athleteCustomFieldLabels: {
-  key: keyof AthleteCustomFields;
+  key: keyof AthleteKnownCustomFields;
   label: string;
 }[] = [
   { key: "lockerNumber", label: "Locker #" },
@@ -454,6 +486,121 @@ export function emptyAthleteCustomFields(): AthleteCustomFields {
   };
 }
 
+/** Stable slug for a new inventory column; avoids colliding with existing keys. */
+export function slugifyInventoryFieldKey(
+  label: string,
+  existingKeys: Iterable<string>,
+): string {
+  const taken = new Set(existingKeys);
+  for (const g of athleteGuardianFieldKeys) taken.add(g);
+  const base =
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "") || "field";
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}_${n}`)) n += 1;
+  return `${base}_${n}`;
+}
+
+export type RecruitingSheetColumn = {
+  key: string;
+  label: string;
+  minWidth?: string;
+  inputWidth?: string;
+};
+
+/** Built-in recruiting sheet columns that map to core Athlete fields */
+export const recruitingCoreFieldKeys = [
+  "jerseyNumber",
+  "height",
+  "weight",
+  "totalGpa",
+  "coreGpa",
+  "actSat",
+  "phone",
+  "email",
+  "twitterHandle",
+  "hudlLink",
+] as const;
+
+export type RecruitingCoreFieldKey = (typeof recruitingCoreFieldKeys)[number];
+
+const recruitingCoreFieldKeySet = new Set<string>(recruitingCoreFieldKeys);
+
+/** Sheet-only columns derived from athlete identity / roster (not free-text stores) */
+export const recruitingStructuralKeys = [
+  "name",
+  "classYear",
+  "position",
+] as const;
+
+export type RecruitingStructuralKey = (typeof recruitingStructuralKeys)[number];
+
+const recruitingStructuralKeySet = new Set<string>(recruitingStructuralKeys);
+
+/** Profile main form already shows these — Recruiting panel skips them to avoid duplicates */
+export const recruitingProfileMainKeys = new Set<string>([
+  "name",
+  "classYear",
+  "position",
+  "height",
+  "weight",
+  "jerseyNumber",
+  "phone",
+  "email",
+]);
+
+export function isRecruitingCoreFieldKey(
+  key: string,
+): key is RecruitingCoreFieldKey {
+  return recruitingCoreFieldKeySet.has(key);
+}
+
+export function isRecruitingStructuralKey(
+  key: string,
+): key is RecruitingStructuralKey {
+  return recruitingStructuralKeySet.has(key);
+}
+
+/** Default Staff Recruiting columns (sheet + profile Recruiting section) */
+export const defaultRecruitingSheetColumns: RecruitingSheetColumn[] = [
+  { key: "name", label: "Prospect Name", minWidth: "min-w-[10rem]" },
+  { key: "classYear", label: "Classification" },
+  { key: "position", label: "Position" },
+  { key: "jerseyNumber", label: "Jersey #", inputWidth: "w-14" },
+  { key: "height", label: "Height", inputWidth: "w-16" },
+  { key: "weight", label: "Weight", inputWidth: "w-14" },
+  { key: "totalGpa", label: "Total GPA", inputWidth: "w-16" },
+  { key: "coreGpa", label: "Core GPA", inputWidth: "w-16" },
+  { key: "actSat", label: "ACT/SAT", inputWidth: "w-24" },
+  { key: "phone", label: "Cell #", inputWidth: "w-32" },
+  { key: "email", label: "Email Address", inputWidth: "w-44" },
+  { key: "twitterHandle", label: "Twitter Handle", inputWidth: "w-28" },
+  { key: "hudlLink", label: "HUDL Link", inputWidth: "w-40" },
+];
+
+/** Stable slug for a new recruiting column; avoids colliding with existing keys. */
+export function slugifyRecruitingFieldKey(
+  label: string,
+  existingKeys: Iterable<string>,
+): string {
+  const taken = new Set(existingKeys);
+  taken.add("name");
+  const base =
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "") || "field";
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}_${n}`)) n += 1;
+  return `${base}_${n}`;
+}
+
 export type Athlete = {
   id: string;
   firstName: string;
@@ -481,8 +628,19 @@ export type Athlete = {
   height?: string;
   /** e.g. 185 */
   weight?: string;
+  /** Jersey number */
+  jerseyNumber?: string;
+  /** Academic / recruiting */
+  totalGpa?: string;
+  coreGpa?: string;
+  /** Combined ACT/SAT score or scores string */
+  actSat?: string;
+  twitterHandle?: string;
+  hudlLink?: string;
   /** Equipment + guardian answers */
   customFields?: AthleteCustomFields;
+  /** Values for custom Staff Recruiting columns (non-core keys) */
+  recruitingFields?: Record<string, string>;
 };
 
 export type TeamMember = {
@@ -612,33 +770,92 @@ export function athletesForDepthPosition(
 
 /** GradClass is declared below; athletes use the same values */
 export type GradClass =
-  | "alumni"
   | "senior"
   | "junior"
   | "sophomore"
   | "freshman";
 
 export const gradClassLabels: Record<GradClass, string> = {
-  alumni: "Alumni",
   senior: "Senior",
   junior: "Junior",
   sophomore: "Sophomore",
   freshman: "Freshman",
 };
 
+/** Compact grade labels for list/table cells (profiles & depth charts keep full names). */
+export const gradClassAbbreviations: Record<GradClass, string> = {
+  senior: "Sr",
+  junior: "Jr",
+  sophomore: "So",
+  freshman: "Fr",
+};
+
+export function abbreviateGrade(classYear: string): string {
+  if (!classYear) return classYear;
+  if (classYear in gradClassAbbreviations) {
+    return gradClassAbbreviations[classYear as GradClass];
+  }
+  const byLabel = (
+    Object.entries(gradClassLabels) as [GradClass, string][]
+  ).find(([, label]) => label.toLowerCase() === classYear.toLowerCase());
+  if (byLabel) return gradClassAbbreviations[byLabel[0]];
+  return classYear;
+}
+
+/** Known team name → short display form (custom names fall back to initials). */
+const TEAM_ABBREVIATIONS: Record<string, string> = {
+  Varsity: "V",
+  "Junior Varsity": "JV",
+  Sophomore: "So",
+  "Freshmen Blue": "FrB",
+  "Freshman Blue": "FrB",
+  "Freshman Silver": "FrS",
+  "Freshmen Silver": "FrS",
+  "Freshman Gold": "FrG",
+  "Freshmen Gold": "FrG",
+};
+
+export function abbreviateTeam(team: string): string {
+  if (!team) return team;
+  const exact = TEAM_ABBREVIATIONS[team];
+  if (exact) return exact;
+  const known = Object.keys(TEAM_ABBREVIATIONS).find(
+    (k) => k.toLowerCase() === team.toLowerCase(),
+  );
+  if (known) return TEAM_ABBREVIATIONS[known];
+
+  if (/^junior\s*varsity$/i.test(team) || /^j\.?\s*v\.?$/i.test(team)) {
+    return "JV";
+  }
+  if (/^varsity$/i.test(team)) return "V";
+
+  const freshmanColor = team.match(/^freshm[ae]n\s+(.+)$/i);
+  if (freshmanColor) {
+    const color = freshmanColor[1].trim();
+    if (color) return `Fr${color.charAt(0).toUpperCase()}`;
+  }
+
+  const words = team.trim().split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    return words.map((w) => w.charAt(0).toUpperCase()).join("");
+  }
+  if (team.length <= 3) return team;
+  return `${team.charAt(0).toUpperCase()}${team.slice(1, 2).toLowerCase()}`;
+}
+
 export const athletes: Athlete[] = [
   // Offense
-  { id: "a1", firstName: "Tyler", lastName: "Brooks", name: "Tyler Brooks", groups: ["WR", "ILB"], classYear: "senior", height: "6'1\"", weight: "195" },
-  { id: "a2", firstName: "Jordan", lastName: "Hill", name: "Jordan Hill", groups: ["WR", "RB"], classYear: "senior", height: "5'11\"", weight: "185" },
-  { id: "a3", firstName: "Blake", lastName: "Moss", name: "Blake Moss", groups: ["OL"], classYear: "senior", height: "6'4\"", weight: "285" },
-  { id: "a4", firstName: "Ethan", lastName: "Ford", name: "Ethan Ford", groups: ["OL"], classYear: "senior", height: "6'3\"", weight: "290" },
-  { id: "a5", firstName: "Tyler", lastName: "Voss", name: "Tyler Voss", groups: ["OL"], classYear: "senior", height: "6'5\"", weight: "305" },
-  { id: "a6", firstName: "Quinn", lastName: "West", name: "Quinn West", groups: ["OL"], classYear: "senior", height: "6'2\"", weight: "275" },
-  { id: "a7", firstName: "Mason", lastName: "Grant", name: "Mason Grant", groups: ["OL"], classYear: "senior", height: "6'3\"", weight: "280" },
-  { id: "a8", firstName: "Cameron", lastName: "Dunn", name: "Cameron Dunn", groups: ["TE"], classYear: "senior", height: "6'4\"", weight: "240" },
-  { id: "a9", firstName: "Ryan", lastName: "Cain", name: "Ryan Cain", groups: ["WR"], classYear: "senior", height: "6'0\"", weight: "180" },
-  { id: "a10", firstName: "Alex", lastName: "Reyes", name: "Alex Reyes", groups: ["QB"], classYear: "senior", height: "6'2\"", weight: "205" },
-  { id: "a11", firstName: "Kyle", lastName: "Ward", name: "Kyle Ward", groups: ["RB"], classYear: "senior", height: "5'10\"", weight: "200" },
+  { id: "a1", firstName: "Tyler", lastName: "Brooks", name: "Tyler Brooks", groups: ["WR", "ILB"], classYear: "senior", height: "6'1\"", weight: "195", jerseyNumber: "11", totalGpa: "3.6", coreGpa: "3.4", actSat: "24 / 1180", phone: "281-555-1101", email: "tbrooks@student.cycreek.edu", twitterHandle: "@tbrooks11", hudlLink: "https://www.hudl.com/profile/tbrooks" },
+  { id: "a2", firstName: "Jordan", lastName: "Hill", name: "Jordan Hill", groups: ["WR", "RB"], classYear: "senior", height: "5'11\"", weight: "185", jerseyNumber: "2", totalGpa: "3.2", coreGpa: "3.0", actSat: "21", phone: "281-555-1102", email: "jhill@student.cycreek.edu", twitterHandle: "@jordanhill2", hudlLink: "https://www.hudl.com/profile/jhill" },
+  { id: "a3", firstName: "Blake", lastName: "Moss", name: "Blake Moss", groups: ["OL"], classYear: "senior", height: "6'4\"", weight: "285", jerseyNumber: "72", totalGpa: "3.1", coreGpa: "2.9", actSat: "20 / 1040", phone: "281-555-1103", email: "bmoss@student.cycreek.edu" },
+  { id: "a4", firstName: "Ethan", lastName: "Ford", name: "Ethan Ford", groups: ["OL"], classYear: "senior", height: "6'3\"", weight: "290", jerseyNumber: "74", totalGpa: "3.4", coreGpa: "3.2", actSat: "23", phone: "281-555-1104", email: "eford@student.cycreek.edu", twitterHandle: "@ethanford74" },
+  { id: "a5", firstName: "Tyler", lastName: "Voss", name: "Tyler Voss", groups: ["OL"], classYear: "senior", height: "6'5\"", weight: "305", jerseyNumber: "77", totalGpa: "2.9", coreGpa: "2.8", actSat: "19", phone: "281-555-1105", email: "tvoss@student.cycreek.edu" },
+  { id: "a6", firstName: "Quinn", lastName: "West", name: "Quinn West", groups: ["OL"], classYear: "senior", height: "6'2\"", weight: "275", jerseyNumber: "65", totalGpa: "3.8", coreGpa: "3.7", actSat: "28 / 1320", phone: "281-555-1106", email: "qwest@student.cycreek.edu", twitterHandle: "@qwest65", hudlLink: "https://www.hudl.com/profile/qwest" },
+  { id: "a7", firstName: "Mason", lastName: "Grant", name: "Mason Grant", groups: ["OL"], classYear: "senior", height: "6'3\"", weight: "280", jerseyNumber: "70", totalGpa: "3.0", coreGpa: "2.9", phone: "281-555-1107", email: "mgrant@student.cycreek.edu" },
+  { id: "a8", firstName: "Cameron", lastName: "Dunn", name: "Cameron Dunn", groups: ["TE"], classYear: "senior", height: "6'4\"", weight: "240", jerseyNumber: "88", totalGpa: "3.5", coreGpa: "3.3", actSat: "25 / 1210", phone: "281-555-1108", email: "cdunn@student.cycreek.edu", twitterHandle: "@camdunn88", hudlLink: "https://www.hudl.com/profile/cdunn" },
+  { id: "a9", firstName: "Ryan", lastName: "Cain", name: "Ryan Cain", groups: ["WR"], classYear: "senior", height: "6'0\"", weight: "180", jerseyNumber: "5", totalGpa: "3.7", coreGpa: "3.5", actSat: "26", phone: "281-555-1109", email: "rcain@student.cycreek.edu", twitterHandle: "@ryancain5" },
+  { id: "a10", firstName: "Alex", lastName: "Reyes", name: "Alex Reyes", groups: ["QB"], classYear: "senior", height: "6'2\"", weight: "205", jerseyNumber: "7", totalGpa: "3.9", coreGpa: "3.8", actSat: "29 / 1380", phone: "281-555-1110", email: "areyes@student.cycreek.edu", twitterHandle: "@alexreyes7", hudlLink: "https://www.hudl.com/profile/areyes" },
+  { id: "a11", firstName: "Kyle", lastName: "Ward", name: "Kyle Ward", groups: ["RB"], classYear: "senior", height: "5'10\"", weight: "200", jerseyNumber: "21", totalGpa: "3.3", coreGpa: "3.1", actSat: "22", phone: "281-555-1111", email: "kward@student.cycreek.edu", twitterHandle: "@kyleward21", hudlLink: "https://www.hudl.com/profile/kward" },
   { id: "a12", firstName: "Parker", lastName: "Soto", name: "Parker Soto", groups: ["WR"], classYear: "sophomore" },
   { id: "a13", firstName: "Tyler", lastName: "Lee", name: "Tyler Lee", groups: ["WR", "RB"], classYear: "sophomore" },
   { id: "a14", firstName: "Sam", lastName: "Ruiz", name: "Sam Ruiz", groups: ["OL"], classYear: "junior" },
@@ -651,7 +868,25 @@ export const athletes: Athlete[] = [
   { id: "a21", firstName: "Mason", lastName: "Cole", name: "Mason Cole", groups: ["QB"], classYear: "sophomore" },
   { id: "a22", firstName: "Cameron", lastName: "Day", name: "Cameron Day", groups: ["WR", "DB"], classYear: "freshman" },
   // Defense
-  { id: "a23", firstName: "Jordan", lastName: "Martinez", name: "Jordan Martinez", groups: ["DL"], classYear: "senior", accountId: "m-martinez" },
+  {
+    id: "a23",
+    firstName: "Jordan",
+    lastName: "Martinez",
+    name: "Jordan Martinez",
+    groups: ["DL"],
+    classYear: "senior",
+    accountId: "m-martinez",
+    height: "6'3\"",
+    weight: "275",
+    jerseyNumber: "90",
+    totalGpa: "3.4",
+    coreGpa: "3.2",
+    actSat: "23 / 1120",
+    phone: "281-555-0200",
+    email: "jmartinez@student.cycreek.edu",
+    twitterHandle: "@jmartinez90",
+    hudlLink: "https://www.hudl.com/profile/jmartinez",
+  },
   { id: "a24", firstName: "Ryan", lastName: "Stone", name: "Ryan Stone", groups: ["DL"], classYear: "senior" },
   { id: "a25", firstName: "Logan", lastName: "Cross", name: "Logan Cross", groups: ["DL"], classYear: "senior" },
   { id: "a26", firstName: "Noah", lastName: "Price", name: "Noah Price", groups: ["ILB"], classYear: "senior" },
@@ -764,7 +999,7 @@ export const athletes: Athlete[] = [
     lastName: "Hayes",
     name: "Emma Hayes",
     groups: [],
-    classYear: "alumni",
+    classYear: "senior",
     personnelType: "support-staff",
     supportRole: "filmer",
     athleticPeriod: "",
@@ -797,7 +1032,7 @@ export const athletes: Athlete[] = [
     lastName: "King",
     name: "Eli King",
     groups: [],
-    classYear: "alumni",
+    classYear: "senior",
     personnelType: "support-staff",
     supportRole: "trainer",
     athleticPeriod: "",
@@ -808,7 +1043,7 @@ export const athletes: Athlete[] = [
     lastName: "Lane",
     name: "Ruby Lane",
     groups: [],
-    classYear: "alumni",
+    classYear: "senior",
     personnelType: "support-staff",
     supportRole: "trainer",
     athleticPeriod: "",
@@ -823,25 +1058,97 @@ export const potw = {
 };
 
 export const quizzes: Quiz[] = [
+  // Week 0 (2-a-days / scrimmages) intentionally has no seed quizzes.
   {
     id: "q1",
     title: "Week 1 Defense — Morton Ranch Scout",
     side: "defense",
     week: 1,
+    gameId: "w1",
     due: "Mon Aug 25 · before AP",
-    assignedGroups: ["DL", "ILB", "OLB", "DB"],
+    assignedGroups: ["DL", "LB", "DB"],
     status: "assigned",
     passingScore: 80,
+    generatedAt: null,
+    generationSource: "coach",
+    questions: [
+      {
+        id: "q1-a",
+        prompt: "Morton Ranch's base run look this week is most often:",
+        options: [
+          "Inside zone from under center",
+          "Outside zone / stretch from shotgun",
+          "Power ISO with a fullback",
+          "Empty pass first",
+        ],
+        correctIndex: 1,
+        source: "coach",
+        explanation: "Scout cards flag shotgun stretch as their bread-and-butter.",
+      },
+      {
+        id: "q1-b",
+        prompt: "On stretch to your side, DL first step priority is:",
+        options: [
+          "Spill and chase backside",
+          "Attack the near hip and stay square",
+          "Drop into coverage immediately",
+          "Wait to see the puller",
+        ],
+        correctIndex: 1,
+        source: "coach",
+      },
+      {
+        id: "q1-c",
+        prompt: "LB fit vs stretch: the force player should:",
+        options: [
+          "Squeeze and set the edge outside-in",
+          "Crash inside the tackle box first",
+          "Bail to deep third",
+          "Spy the QB only",
+        ],
+        correctIndex: 0,
+        source: "ai",
+      },
+    ],
   },
   {
     id: "q2",
     title: "Week 1 Offense — Install #1 Check",
     side: "offense",
     week: 1,
+    gameId: "w1",
     due: "Tue Aug 26 · before practice",
     assignedGroups: ["OL", "QB", "RB", "TE", "WR"],
     status: "assigned",
     passingScore: 80,
+    generatedAt: null,
+    generationSource: "coach",
+    questions: [
+      {
+        id: "q2-a",
+        prompt: "Install #1 base run is:",
+        options: [
+          "Outside zone (9/8)",
+          "Tight zone (3/2)",
+          "Gap scheme trap",
+          "Draw",
+        ],
+        correctIndex: 1,
+        source: "coach",
+      },
+      {
+        id: "q2-b",
+        prompt: "On tight zone, the aiming point for the back is:",
+        options: [
+          "Outside the tackle",
+          "The A/B gap — press, then bounce or bang",
+          "Opposite hash always",
+          "Behind the center only",
+        ],
+        correctIndex: 1,
+        source: "coach",
+      },
+    ],
   },
 ];
 
@@ -1024,6 +1331,9 @@ export function coachesOnSide(side: Side) {
   return coachStaff.filter((c) => c.side === side && c.role === "coach");
 }
 
+/** Demo position coach for the role switcher (Coach Spencer — DL). Stable across unit side. */
+export const DEMO_COACH_STAFF_ID = "spencer";
+
 /** Mock “who am I” for My Room based on role switcher + current side + assignments */
 export function myRoomProfile(
   role: Role,
@@ -1039,15 +1349,22 @@ export function myRoomProfile(
     return null;
   }
   if (role === "coach") {
+    // Keep the demo coach identity fixed (Spencer / DL). Do not remap to the first
+    // coach on the active unit side — that incorrectly granted OL edit rights when a
+    // DL coach opened Offense → Team Grades.
     const coach =
-      coachesOnSide(side)[0] ??
-      coachStaff.find((c) => c.role === "coach" && c.side === side);
+      coachStaff.find((c) => c.id === DEMO_COACH_STAFF_ID) ??
+      coachStaff.find((c) => c.role === "coach");
     if (!coach) return null;
     const assigned = groupsForCoachId(coach.id, assignments);
     return {
       name: coach.name,
-      groups: assigned.length ? assigned : coach.side === "defense" ? ["DL"] : ["OL"],
-      side,
+      groups: assigned.length
+        ? assigned
+        : coach.side === "defense"
+          ? ["DL"]
+          : ["OL"],
+      side: coach.side,
       coachId: coach.id,
     };
   }
@@ -1059,8 +1376,18 @@ export function myRoomProfile(
     return { name: match.coach, groups: match.groups, side };
   }
   return {
-    name: side === "defense" ? "Defensive Coordinator" : "Offensive Coordinator",
-    groups: side === "defense" ? ["All D"] : ["All O"],
+    name:
+      side === "defense"
+        ? "Defensive Coordinator"
+        : side === "specialTeams"
+          ? "Special Teams Coordinator"
+          : "Offensive Coordinator",
+    groups:
+      side === "defense"
+        ? ["All D"]
+        : side === "specialTeams"
+          ? [...specialTeamsGroups]
+          : ["All O"],
     side,
   };
 }
@@ -1278,26 +1605,6 @@ export const members: TeamMember[] = [
     phone: "281-555-0200",
     email: "jmartinez@student.cycreek.edu",
   },
-  {
-    id: "m-parent-m",
-    firstName: "Parent",
-    lastName: "Martinez",
-    name: "Parent Martinez",
-    role: "parent",
-    status: "active",
-    phone: "281-555-0300",
-    email: "parent.martinez@email.com",
-  },
-  {
-    id: "m-fan",
-    firstName: "Public",
-    lastName: "Fan",
-    name: "Public Fan",
-    role: "fan",
-    status: "active",
-    phone: "",
-    email: "",
-  },
 ];
 
 /** Demo logged-in account when using the role switcher */
@@ -1314,10 +1621,6 @@ export function demoMemberIdForRole(role: Role): string {
       return "m-spencer";
     case "player":
       return DEMO_PLAYER_MEMBER_ID;
-    case "parent":
-      return "m-parent-m";
-    case "fan":
-      return "m-fan";
   }
 }
 
@@ -1345,6 +1648,49 @@ export function findDemoPlayerAthlete(
     roster.find((a) => a.accountId === DEMO_PLAYER_MEMBER_ID) ??
     roster.find((a) => a.id === DEMO_PLAYER_ATHLETE_ID)
   );
+}
+
+/** Who “This Week” is personalized for (demo role switcher identity). */
+export type ThisWeekIdentity =
+  | {
+      kind: "player";
+      member: TeamMember;
+      athlete: Athlete;
+    }
+  | {
+      kind: "staff";
+      member: TeamMember;
+      profile: NonNullable<ReturnType<typeof myRoomProfile>>;
+    }
+  | {
+      kind: "other";
+      member?: TeamMember;
+    };
+
+export function resolveThisWeekIdentity(
+  role: Role,
+  side: Side,
+  members: TeamMember[],
+  roster: Athlete[],
+  assignments: CoachGroupAssignments,
+): ThisWeekIdentity {
+  const member = findDemoMember(members, role);
+  if (role === "player") {
+    const athlete = findDemoPlayerAthlete(roster);
+    if (member && athlete) return { kind: "player", member, athlete };
+  }
+  if (role === "coach" || role === "coordinator" || role === "admin") {
+    const profile = myRoomProfile(role, side, assignments);
+    if (member && profile) return { kind: "staff", member, profile };
+  }
+  return { kind: "other", member };
+}
+
+/** Mock install focus line for unit pages / This Week */
+export function installFocusForSide(side: Side): string {
+  if (side === "defense") return "#1 Foundation — Tite front";
+  if (side === "specialTeams") return "#1 Coverage fundamentals";
+  return "#1 Base run game";
 }
 
 export const offenseGameGoals = [
@@ -1387,7 +1733,76 @@ export const seedDefenseGoals = seedUnitGoals("defense", defenseGameGoals);
 /** @deprecated use defenseGameGoals — kept for This Week panel */
 export const gameGoals = defenseGameGoals;
 
-export const currentGame = games.find((g) => g.id === "w1") ?? games[0];
+const MONTH_INDEX: Record<string, number> = {
+  Jan: 0,
+  Feb: 1,
+  Mar: 2,
+  Apr: 3,
+  May: 4,
+  Jun: 5,
+  Jul: 6,
+  Aug: 7,
+  Sep: 8,
+  Oct: 9,
+  Nov: 10,
+  Dec: 11,
+};
+
+/** Parse schedule labels like "Fri, Aug 14" into a Date for the season year. */
+export function parseGameCalendarDate(
+  dateLabel: string,
+  seasonYear: number = Number(team.season) || new Date().getFullYear(),
+): Date | null {
+  const m = dateLabel.match(/([A-Za-z]{3})\s+(\d{1,2})/);
+  if (!m) return null;
+  const month = MONTH_INDEX[m[1]!];
+  const day = Number(m[2]);
+  if (month === undefined || !Number.isFinite(day) || day < 1) return null;
+  // Fall season year covers Aug–Dec; Jan–Jun dates belong to the next calendar year.
+  const year = month <= 5 ? seasonYear + 1 : seasonYear;
+  return new Date(year, month, day, 23, 59, 59, 999);
+}
+
+function startOfLocalDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** Next schedule event on or after `now` (by calendar date). */
+export function getNextUpcomingGame(
+  list: Game[] = games,
+  now: Date = new Date(),
+  seasonYear: number = Number(team.season) || new Date().getFullYear(),
+): Game {
+  const today = startOfLocalDay(now).getTime();
+  const ranked = list
+    .map((g) => ({ g, at: parseGameCalendarDate(g.date, seasonYear) }))
+    .filter((x): x is { g: Game; at: Date } => x.at !== null)
+    .map(({ g, at }) => ({ g, at: startOfLocalDay(at).getTime() }))
+    .sort((a, b) => a.at - b.at);
+
+  const upcoming = ranked.find(({ at }) => at >= today);
+  return upcoming?.g ?? ranked[ranked.length - 1]?.g ?? list[0]!;
+}
+
+/**
+ * Featured / default week: admin override when `activeGameId` is set and present
+ * in `list`, otherwise next upcoming by calendar date.
+ */
+export function resolveActiveGame(
+  list: Game[] = games,
+  activeGameId: string | null | undefined = null,
+  now: Date = new Date(),
+  seasonYear: number = Number(team.season) || new Date().getFullYear(),
+): Game {
+  if (activeGameId) {
+    const forced = list.find((g) => g.id === activeGameId);
+    if (forced) return forced;
+  }
+  return getNextUpcomingGame(list, now, seasonYear);
+}
+
+/** Featured “This Week” event — follows today's date (e.g. next up = 2-a-Days). */
+export const currentGame = getNextUpcomingGame();
 
 /** Eyebrow label for schedule / weekly accordions */
 export function gameSlotLabel(g: Game): string {
