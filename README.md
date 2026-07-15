@@ -38,3 +38,7 @@ Tips:
 - Workout present mode (`/workout` or **Show team**)
 
 No real auth, database, or uploads yet.
+
+## Plan
+
+See [ROADMAP.md](./ROADMAP.md) for the path to demo, real app, onboarding, roster imports, season roll, and MaxPreps stats publish.
