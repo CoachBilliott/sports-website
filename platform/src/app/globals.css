@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+:root {
+  --cc-blue: #0b3d91;
+  --cc-navy: #0a2540;
+  --cc-steel: #3d4a5c;
+  --cc-field: #e8eef5;
+  --cc-line: #d0dae6;
+  --background: var(--cc-field);
+  --foreground: var(--cc-navy);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+body {
+  background: var(--cc-field);
+  color: var(--cc-navy);
+  font-family: var(--font-body), system-ui, sans-serif;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(11, 61, 145, 0.12), transparent),
+    linear-gradient(180deg, #f4f7fb 0%, var(--cc-field) 40%);
+  min-height: 100%;
+}

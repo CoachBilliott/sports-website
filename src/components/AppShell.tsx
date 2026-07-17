@@ -13006,7 +13006,18 @@ export function AppShell() {
       <footer className="depth-print-hide mx-auto max-w-[90rem] px-4 pb-8 text-center text-xs text-[var(--cc-steel)] sm:px-6">
         {presentMode
           ? "Cy Creek Football · Workout board"
-          : "UI mock only · no real auth/uploads yet · works alongside Hudl"}
+          : (
+            <>
+              Cy Creek Football · Team OS
+              {" · "}
+              <a
+                href="http://localhost:3001"
+                className="font-semibold text-[var(--cc-blue)] hover:underline"
+              >
+                Platform
+              </a>
+            </>
+          )}
       </footer>
     </div>
   );
