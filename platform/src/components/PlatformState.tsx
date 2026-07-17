@@ -28,6 +28,7 @@ import {
   type SportId,
   type SportProgram,
 } from "@/lib/programConfig";
+import { DEMO_SCRIPT } from "@/lib/demoContent";
 
 export type PlatformPage =
   | "overview"
@@ -66,6 +67,16 @@ type PlatformContextValue = {
   sportOptions: typeof SPORT_OPTIONS;
   parentOptOuts: Set<string>;
   toggleParentOptOut: (athleteKey: string) => void;
+  presentMode: boolean;
+  setPresentMode: (v: boolean) => void;
+  scriptStep: number;
+  setScriptStep: (n: number) => void;
+  advanceScript: () => void;
+  scriptDone: Set<string>;
+  markScriptStep: (id: string) => void;
+  resetDemo: () => void;
+  deletionCert: string | null;
+  setDeletionCert: (v: string | null) => void;
 };
 
 const Ctx = createContext<PlatformContextValue | null>(null);
@@ -85,12 +96,16 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   const [parentOptOuts, setParentOptOuts] = useState<Set<string>>(
     () => new Set(),
   );
+  const [presentMode, setPresentMode] = useState(false);
+  const [scriptStep, setScriptStep] = useState(0);
+  const [scriptDone, setScriptDone] = useState<Set<string>>(() => new Set());
+  const [deletionCert, setDeletionCert] = useState<string | null>(null);
 
   const logAudit = useCallback(
     (action: string, detail: string, actor = "Admin") => {
       setAuditEvents((prev) => [
         {
-          id: `aud-${Date.now()}`,
+          id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           at: new Date().toISOString(),
           actor,
           action,
@@ -138,15 +153,22 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
 
   const removeProgram = useCallback(
     (id: string) => {
+      const prog = programs.find((p) => p.id === id);
       setPrograms((prev) => {
         if (prev.length <= 1) return prev;
         const next = prev.filter((p) => p.id !== id);
         if (activeProgramId === id) setActiveProgramId(next[0]!.id);
         return next;
       });
-      logAudit("offboard_program", `Removed program ${id}`);
+      logAudit(
+        "offboard_program",
+        `Removed program ${prog?.name ?? id}`,
+      );
+      setDeletionCert(
+        `OFFBOARD CERTIFICATE (demo)\nProgram: ${prog?.name ?? id}\nAt: ${new Date().toISOString()}\nActor: Admin\nScope: session-only purge simulation`,
+      );
     },
-    [activeProgramId, logAudit],
+    [activeProgramId, logAudit, programs],
   );
 
   const setLegalItem = useCallback(
@@ -180,6 +202,41 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     },
     [logAudit],
   );
+
+  const markScriptStep = useCallback((id: string) => {
+    setScriptDone((prev) => new Set(prev).add(id));
+  }, []);
+
+  const advanceScript = useCallback(() => {
+    if (scriptStep >= DEMO_SCRIPT.length) {
+      setScriptStep(0);
+      setScriptDone(new Set());
+      setPage("overview");
+      return;
+    }
+    const step = DEMO_SCRIPT[scriptStep];
+    if (step) {
+      markScriptStep(step.id);
+      setPage(step.page);
+    }
+    setScriptStep((n) => Math.min(n + 1, DEMO_SCRIPT.length));
+  }, [markScriptStep, scriptStep]);
+
+  const resetDemo = useCallback(() => {
+    setPrograms([...SEED_PROGRAMS]);
+    setActiveProgramId(SEED_PROGRAMS[0]!.id);
+    setLegalChecklist(emptyLegalChecklist());
+    setSafetyToggles(emptySafetyToggles());
+    setAuditEvents(seedAuditEvents());
+    setSsoDemoConnectedState(false);
+    setParentOptOuts(new Set());
+    setPresentMode(false);
+    setScriptStep(0);
+    setScriptDone(new Set());
+    setDeletionCert(null);
+    setPage("overview");
+    logAudit("demo_reset", "Reset session to seed demo state");
+  }, [logAudit]);
 
   const activeProgram =
     programs.find((p) => p.id === activeProgramId) ?? programs[0]!;
@@ -215,6 +272,19 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       sportOptions: SPORT_OPTIONS,
       parentOptOuts,
       toggleParentOptOut,
+      presentMode,
+      setPresentMode: (v) => {
+        setPresentMode(v);
+        logAudit("present_mode", v ? "Entered present mode" : "Exited present mode");
+      },
+      scriptStep,
+      setScriptStep,
+      advanceScript,
+      scriptDone,
+      markScriptStep,
+      resetDemo,
+      deletionCert,
+      setDeletionCert,
     }),
     [
       page,
@@ -233,6 +303,13 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       ssoDemoConnected,
       parentOptOuts,
       toggleParentOptOut,
+      presentMode,
+      scriptStep,
+      advanceScript,
+      scriptDone,
+      markScriptStep,
+      resetDemo,
+      deletionCert,
     ],
   );
 

@@ -138,8 +138,11 @@ Log: add/switch program, legal toggles, SSO, export, delete
 
 - [x] All Platform nav pages usable in a 5-minute AD demo
 - [x] Add Volleyball → template shows single **Team** unit (not O/D/ST)
-- [x] Switch active program updates Fan/Parent titles
-- [x] Fan/Parent look presentable (no mock-shame footer)
+- [x] Switch active program updates Fan/Parent titles **and** schedule/roster data
+- [x] Fan/Parent look presentable (brand logo, standings, news, present mode)
+- [x] Legal & safety: field matrix, toggles, opt-outs, subprocessors, retention
+- [x] Overview live demo script + readiness score + reset
+- [x] Audit filters + CSV; Export JSON + offboard certificate
 - [x] Football app at `:3000` unchanged
 - [x] `cd platform && npx tsc --noEmit` clean (verify on each agent run)
 

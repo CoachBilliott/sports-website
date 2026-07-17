@@ -448,6 +448,13 @@ export const SEED_PROGRAMS: SportProgram[] = [
     seasonLabel: "2026",
     campusId: SEED_CAMPUS.id,
   },
+  {
+    id: "prog-vb-2026",
+    name: "Volleyball",
+    sport: "volleyball",
+    seasonLabel: "2026",
+    campusId: SEED_CAMPUS.id,
+  },
 ];
 
 export function configForSport(sport: SportId): ProgramConfig {
@@ -476,14 +483,28 @@ export function seedAuditEvents(): AuditEvent[] {
       at: new Date(now - 86400000).toISOString(),
       actor: "Admin",
       action: "view_roster",
-      detail: "Opened public roster preview",
+      detail: "Opened public Fan roster preview",
     },
     {
       id: "aud-3",
+      at: new Date(now - 7200000).toISOString(),
+      actor: "AD",
+      action: "add_program",
+      detail: "Seeded Volleyball · volleyball · 2026",
+    },
+    {
+      id: "aud-4",
       at: new Date(now - 3600000).toISOString(),
       actor: "AD",
       action: "legal_checklist",
       detail: "Reviewed FERPA checklist item",
+    },
+    {
+      id: "aud-5",
+      at: new Date(now - 1800000).toISOString(),
+      actor: "Admin",
+      action: "safety_control",
+      detail: "blockGradesOnFan → on",
     },
   ];
 }
@@ -505,91 +526,13 @@ export const MODULE_LABELS: Record<ProgramModuleId, string> = {
   study: "Study",
 };
 
-/** Lightweight demo data for Fan / Parent previews */
-export const DEMO_SCHEDULE = [
-  {
-    week: 1,
-    date: "Aug 28",
-    time: "7:00 PM",
-    opponent: "Tomball Memorial",
-    homeAway: "Home" as const,
-    result: "W 28-21" as string | null,
-  },
-  {
-    week: 2,
-    date: "Sep 4",
-    time: "7:00 PM",
-    opponent: "Bridgeland",
-    homeAway: "Away" as const,
-    result: null as string | null,
-  },
-  {
-    week: 3,
-    date: "Sep 11",
-    time: "7:00 PM",
-    opponent: "Cy Ranch",
-    homeAway: "Home" as const,
-    result: null as string | null,
-  },
-  {
-    week: 4,
-    date: "Sep 18",
-    time: "7:00 PM",
-    opponent: "Cy Woods",
-    homeAway: "Home" as const,
-    result: null as string | null,
-  },
-];
-
-export const DEMO_ROSTER = [
-  { jersey: "7", name: "Alex Reyes", pos: "QB", classYear: "Sr" },
-  { jersey: "11", name: "Tyler Brooks", pos: "WR", classYear: "Sr" },
-  { jersey: "2", name: "Jordan Hill", pos: "WR", classYear: "Jr" },
-  { jersey: "88", name: "Cameron Dunn", pos: "TE", classYear: "Sr" },
-  { jersey: "72", name: "Blake Moss", pos: "OL", classYear: "Jr" },
-];
-
-export const DEMO_FAN_NEWS = [
-  {
-    id: "news-1",
-    tag: "Game day",
-    title: "Cougars open district play Friday",
-    blurb: "Kickoff 7:00 PM at Cougar Stadium. Student section gates open at 5:30.",
-  },
-  {
-    id: "news-2",
-    tag: "Community",
-    title: "Booster club cookout Saturday",
-    blurb: "Families welcome after morning walkthrough — parking lot B.",
-  },
-  {
-    id: "news-3",
-    tag: "Media",
-    title: "Media day photos posted",
-    blurb: "Directory headshots are live on the public roster below.",
-  },
-];
-
-export const DEMO_ANNOUNCEMENTS = [
-  {
-    id: "ann-1",
-    date: "Mon",
-    title: "Booster meeting Thursday 6pm",
-    body: "Library conference room. Agenda: travel meals and senior night.",
-  },
-  {
-    id: "ann-2",
-    date: "Wed",
-    title: "Media day Friday after school",
-    body: "Athletes wear game jerseys. Pickup by 5:30pm at the field house.",
-  },
-  {
-    id: "ann-3",
-    date: "Fri",
-    title: "Bus leaves 4:45 for Bridgeland",
-    body: "Parents: arrival ~9:30pm. Check the app for delays.",
-  },
-];
+/** Lightweight aliases kept for older imports — prefer demoContent. */
+export {
+  FOOTBALL_ROSTER as DEMO_ROSTER,
+  FOOTBALL_SCHEDULE as DEMO_SCHEDULE,
+  FAN_NEWS as DEMO_FAN_NEWS,
+  PARENT_ANNOUNCEMENTS as DEMO_ANNOUNCEMENTS,
+} from "./demoContent";
 
 /** Items ADs typically need before a Cy-Fair pilot conversation */
 export const CYFAIR_PILOT_KEYS: LegalChecklistKey[] = [
