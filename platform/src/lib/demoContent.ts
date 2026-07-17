@@ -359,3 +359,19 @@ export function contentForSport(sport: SportId): {
     recordLabel: `${w}-${l}`,
   };
 }
+
+/** Map opponent display names to /logos/opponents/*.png when available */
+export const OPPONENT_LOGO: Record<string, string> = {
+  "Tomball Memorial": "/logos/opponents/tomball-memorial.png",
+  "Cy Woods": "/logos/opponents/cy-woods.png",
+  "Cy Falls": "/logos/opponents/cy-falls.png",
+  "Cy Lakes": "/logos/opponents/cy-lakes.png",
+  "Jersey Village": "/logos/opponents/jersey-village.png",
+  "Langham Creek": "/logos/opponents/langham-creek.png",
+  "Cy Ranch": "/logos/opponents/cy-woods.png",
+  Bridgeland: "/logos/opponents/cy-fair.png",
+};
+
+export function logoForOpponent(name: string): string | null {
+  return OPPONENT_LOGO[name] ?? null;
+}

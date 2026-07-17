@@ -1,6 +1,6 @@
 "use client";
 
-import { FAN_NEWS, contentForSport } from "@/lib/demoContent";
+import { FAN_NEWS, contentForSport, logoForOpponent } from "@/lib/demoContent";
 import { usePlatform } from "../PlatformState";
 import { Badge, GhostButton } from "../ui";
 
@@ -142,6 +142,7 @@ export function FanScreen() {
           <ul className="mt-3 space-y-2">
             {content.schedule.map((g) => {
               const isNext = g.week === nextGame.week && !g.result;
+              const logo = logoForOpponent(g.opponent);
               return (
                 <li
                   key={`${g.week}-${g.opponent}`}
@@ -151,23 +152,37 @@ export function FanScreen() {
                       : "border-[var(--cc-line)]"
                   }`}
                 >
-                  <div>
-                    <p className="font-semibold text-[var(--cc-navy)]">
-                      <span
-                        className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
-                          g.homeAway === "Home"
-                            ? "bg-[var(--cc-navy)] text-white"
-                            : "bg-[var(--cc-field)] text-[var(--cc-steel)]"
-                        }`}
-                      >
-                        {g.homeAway}
+                  <div className="flex min-w-0 items-center gap-3">
+                    {logo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={logo}
+                        alt=""
+                        className="h-9 w-9 rounded-full bg-[var(--cc-field)] object-contain p-0.5 ring-1 ring-[var(--cc-line)]"
+                      />
+                    ) : (
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--cc-field)] text-[10px] font-bold text-[var(--cc-steel)] ring-1 ring-[var(--cc-line)]">
+                        {g.opponent.slice(0, 2).toUpperCase()}
                       </span>
-                      vs {g.opponent}
-                    </p>
-                    <p className="text-xs text-[var(--cc-steel)]">
-                      W{g.week} · {g.date} · {g.time}
-                      {g.venue ? ` · ${g.venue}` : ""}
-                    </p>
+                    )}
+                    <div>
+                      <p className="font-semibold text-[var(--cc-navy)]">
+                        <span
+                          className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                            g.homeAway === "Home"
+                              ? "bg-[var(--cc-navy)] text-white"
+                              : "bg-[var(--cc-field)] text-[var(--cc-steel)]"
+                          }`}
+                        >
+                          {g.homeAway}
+                        </span>
+                        vs {g.opponent}
+                      </p>
+                      <p className="text-xs text-[var(--cc-steel)]">
+                        W{g.week} · {g.date} · {g.time}
+                        {g.venue ? ` · ${g.venue}` : ""}
+                      </p>
+                    </div>
                   </div>
                   <span className="font-semibold text-[var(--cc-navy)]">
                     {g.result ?? (isNext ? "Next" : "TBD")}
