@@ -14,30 +14,17 @@ You are working in **CoachBilliott/sports-website**.
 
 Read and follow this file: `platform/HANDOFF.md` (this document).
 
-**Goal:** Polish and expand the Platform UI for an Athletic Director demo — district/legal readiness, multi-sport “Add team”, Fan page, Parent portal, audit, export/delete.
+## Goal (AD demo)
 
-**Run:**
-```bash
-cd platform && npm install && npm run dev
-```
-→ http://localhost:3001
+Show a district buyer, start to finish:
 
-Football app (leave alone): repo root `npm run dev` → http://localhost:3000
+1. **District** — Cy-Fair → Cypress Creek → programs + SSO  
+2. **Add teams** — multi-sport templates (football full vs core Team unit)  
+3. **Fan site** — public schedule + directory roster only  
+4. **Parent site** — linked athlete, announcements, eligibility  
+5. **Legal & safety** — field matrix, safety toggles, opt-outs, checklist  
 
-Use a branch matching `cursor/<descriptive-name>-64b7`, commit often, push, and open/update a PR against `master`.
-
----
-
-## What this app is
-
-| | Football Team OS | Platform |
-|--|------------------|----------|
-| Path | `src/` (repo root) | `platform/` |
-| Port | 3000 | 3001 |
-| Purpose | Cy Creek football ops UI | District sales + multi-sport + Fan/Parent |
-| Rule | **Do not touch** | **Build here** |
-
-Platform is a sibling Next app so the football UI stays exactly as coaches use it today.
+Audit + Export/Delete support the “fully safe” story.
 
 ---
 
@@ -45,13 +32,13 @@ Platform is a sibling Next app so the football UI stays exactly as coaches use i
 
 | File | Role |
 |------|------|
-| `src/lib/programConfig.ts` | Sport templates, legal checklist keys, Cy-Fair seed org, demo roster/schedule |
-| `src/components/PlatformState.tsx` | Session state: programs, active program, audit, legal checkboxes, SSO demo |
+| `src/lib/programConfig.ts` | Sport templates, legal + safety keys, field matrix, Cy-Fair seed |
+| `src/components/PlatformState.tsx` | Session state: programs, legal, safety toggles, opt-outs, audit, SSO |
 | `src/components/PlatformShell.tsx` | Full shell + screens |
 | `src/app/page.tsx` | Entry |
 | `README.md` | How to run |
 
-**Nav already wired:** Overview · District · Teams · Legal · Audit · Export/Delete · Fan page · Parent
+**Nav:** Overview · District · Add teams · Fan site · Parent site · Legal & safety · Audit · Export/Delete
 
 ---
 
@@ -61,14 +48,14 @@ Platform is a sibling Next app so the football UI stays exactly as coaches use i
 
 ```
 Platform (localhost:3001)
-├── Overview
+├── Overview          (5-step AD tour)
 ├── District          (tenancy + SSO demo)
-├── Teams             (add sport programs / templates)
-├── Legal             (FERPA/PPRA/HIPAA scope + procurement checklist)
+├── Add teams         (multi-sport templates)
+├── Fan site          (public)
+├── Parent site       (guardian view)
+├── Legal & safety    (FERPA matrix + safety controls + checklist)
 ├── Audit             (event log)
-├── Export / Delete   (data portability + offboard demo)
-├── Fan page          (public)
-└── Parent            (guardian view)
+└── Export / Delete   (data portability + offboard demo)
 ```
 
 ### 1. Overview
@@ -89,13 +76,12 @@ Platform (localhost:3001)
   - `volleyball` | `basketball` | `soccer` | `baseball` | `softball` | `track` | `generic` — core only (single “Team” unit, resources/stats/grades/philosophy)
 - Preview active template: units + enabled modules
 
-### 4. Legal (district sales readiness)
-Session checkboxes in PlatformState, groups:
-- **Legal:** entity, DPA, FERPA, PPRA, HIPAA scope
-- **Security:** SSO, encryption, audit logging, export/delete
-- **Procurement:** cyber insurance, SOC2, VPAT, subprocessors  
-
-Not legal advice — progress tracker for demos + real counsel work.
+### 4. Legal & safety
+- Field matrix: Fan / Parent / Staff visibility
+- Live safety toggles (minimize Fan fields, block grades/contacts/scout, opt-outs, no PHI)
+- Directory opt-out list (hides athletes on Fan)
+- Checklist groups: Legal · Security · Procurement  
+Not legal advice — demo tracker for counsel + AD conversations.
 
 ### 5. Audit
 Table: when / who / action / detail  

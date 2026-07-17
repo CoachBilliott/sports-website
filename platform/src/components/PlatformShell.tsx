@@ -2,13 +2,16 @@
 
 import { useMemo, useState } from "react";
 import {
+  AD_DEMO_PILLARS,
   CYFAIR_PILOT_KEYS,
+  DATA_FIELD_MATRIX,
   DEMO_ANNOUNCEMENTS,
   DEMO_FAN_NEWS,
   DEMO_ROSTER,
   DEMO_SCHEDULE,
   LEGAL_CHECKLIST_ITEMS,
   MODULE_LABELS,
+  SAFETY_TOGGLE_ITEMS,
   configForSport,
   type SportId,
 } from "@/lib/programConfig";
@@ -21,12 +24,12 @@ import {
 const NAV: { id: PlatformPage; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "district", label: "District" },
-  { id: "programs", label: "Teams" },
-  { id: "legal", label: "Legal" },
+  { id: "programs", label: "Add teams" },
+  { id: "fan", label: "Fan site" },
+  { id: "parent", label: "Parent site" },
+  { id: "legal", label: "Legal & safety" },
   { id: "audit", label: "Audit" },
   { id: "data", label: "Export / Delete" },
-  { id: "fan", label: "Fan page" },
-  { id: "parent", label: "Parent" },
 ];
 
 function Panel({
@@ -80,20 +83,47 @@ function OverviewScreen() {
     activeConfig,
     setPage,
     legalChecklist,
+    safetyToggles,
   } = usePlatform();
   const doneLegal = LEGAL_CHECKLIST_ITEMS.filter(
     (i) => legalChecklist[i.key],
   ).length;
   const pilotDone = CYFAIR_PILOT_KEYS.filter((k) => legalChecklist[k]).length;
+  const safetyOn = SAFETY_TOGGLE_ITEMS.filter((i) => safetyToggles[i.key]).length;
 
   return (
     <div className="space-y-4">
-      <Panel title="Team OS Platform">
+      <Panel title="Show the district">
         <p className="text-sm text-[var(--cc-steel)]">
-          District sales readiness, multi-sport teams, and Fan / Parent
-          surfaces — kept separate from Cy Creek Football Team OS.
+          Walk an AD through five surfaces: district tenancy, adding sports,
+          public Fan site, Parent site, and Legal &amp; safety — without
+          changing Cy Creek Football Team OS.
         </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <ol className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {AD_DEMO_PILLARS.map((pillar, idx) => (
+            <li key={pillar.id}>
+              <button
+                type="button"
+                onClick={() => setPage(pillar.id)}
+                className="flex h-full w-full flex-col rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-4 text-left transition hover:border-[var(--cc-blue)] hover:bg-white"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--cc-blue)]">
+                  Step {idx + 1}
+                </span>
+                <span className="mt-1 font-[family-name:var(--font-display)] text-lg font-bold text-[var(--cc-navy)]">
+                  {pillar.title}
+                </span>
+                <span className="mt-1 text-xs text-[var(--cc-steel)]">
+                  {pillar.pitch}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      </Panel>
+
+      <Panel title="Team OS Platform">
+        <div className="mt-1 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-4">
             <p className="text-xs font-bold uppercase tracking-wide text-[var(--cc-steel)]">
               District
@@ -105,10 +135,10 @@ function OverviewScreen() {
           </div>
           <div className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-4">
             <p className="text-xs font-bold uppercase tracking-wide text-[var(--cc-steel)]">
-              Programs
+              Teams
             </p>
             <p className="mt-1 font-semibold text-[var(--cc-navy)]">
-              {programs.length} team{programs.length === 1 ? "" : "s"}
+              {programs.length} program{programs.length === 1 ? "" : "s"}
             </p>
             <p className="text-sm text-[var(--cc-steel)]">
               Active: {activeProgram.name} ({activeConfig.label})
@@ -125,13 +155,15 @@ function OverviewScreen() {
               value={doneLegal}
               max={LEGAL_CHECKLIST_ITEMS.length}
             />
-            <button
-              type="button"
-              onClick={() => setPage("legal")}
-              className="mt-2 text-sm font-semibold text-[var(--cc-blue)] hover:underline"
-            >
-              Open Legal →
-            </button>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+              Safety controls
+            </p>
+            <p className="mt-1 font-semibold text-[var(--cc-navy)]">
+              {safetyOn} / {SAFETY_TOGGLE_ITEMS.length} on
+            </p>
+            <ProgressBar value={safetyOn} max={SAFETY_TOGGLE_ITEMS.length} />
           </div>
         </div>
       </Panel>
@@ -243,7 +275,7 @@ function OverviewScreen() {
             onClick={() => setPage("legal")}
             className="mt-3 text-sm font-semibold text-[var(--cc-blue)] hover:underline"
           >
-            Update checklist →
+            Open Legal &amp; safety →
           </button>
         </Panel>
 
@@ -251,9 +283,11 @@ function OverviewScreen() {
           <div className="flex flex-col gap-2">
             {(
               [
+                ["district", "District tenancy + SSO"],
                 ["programs", "Add a sport / team"],
-                ["fan", "Preview fan page"],
-                ["parent", "Preview parent portal"],
+                ["fan", "Preview Fan site"],
+                ["parent", "Preview Parent site"],
+                ["legal", "Legal & safety controls"],
                 ["data", "Export / delete demo"],
               ] as const
             ).map(([id, label]) => (
@@ -285,6 +319,12 @@ function DistrictScreen() {
 
   return (
     <div className="space-y-4">
+      <Panel title="Show the district">
+        <p className="text-sm text-[var(--cc-steel)]">
+          One district account, many campuses and sports. Student data stays
+          scoped under the district — not a separate vendor login per team.
+        </p>
+      </Panel>
       <Panel title="Tenancy">
         <ol className="space-y-3 text-sm">
           <li className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-4">
@@ -292,17 +332,32 @@ function DistrictScreen() {
               District
             </span>
             <p className="font-semibold text-[var(--cc-navy)]">{district.name}</p>
+            <p className="mt-1 text-xs text-[var(--cc-steel)]">
+              Contract, DPA, and SSO live here.
+            </p>
           </li>
           <li className="ml-4 rounded-xl border border-[var(--cc-line)] bg-white p-4">
             <span className="text-xs font-bold uppercase text-[var(--cc-steel)]">
               Campus
             </span>
             <p className="font-semibold text-[var(--cc-navy)]">{campus.name}</p>
+            <p className="mt-1 text-xs text-[var(--cc-steel)]">
+              Athletic director + campus programs.
+            </p>
           </li>
           <li className="ml-8 space-y-2">
-            <span className="text-xs font-bold uppercase text-[var(--cc-steel)]">
-              Programs
-            </span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-bold uppercase text-[var(--cc-steel)]">
+                Programs / teams
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage("programs")}
+                className="text-xs font-semibold text-[var(--cc-blue)] hover:underline"
+              >
+                Add teams →
+              </button>
+            </div>
             <ul className="mt-1 space-y-1">
               {programs.map((p) => (
                 <li
@@ -329,8 +384,8 @@ function DistrictScreen() {
         }
       >
         <p className="text-sm text-[var(--cc-steel)]">
-          Production will use Microsoft / Google OIDC. This toggle is for AD
-          demos only — not real authentication.
+          Production will use Microsoft / Google OIDC so staff use district
+          accounts. This toggle is for AD demos only — not real authentication.
         </p>
         <p className="mt-3 text-sm font-semibold text-[var(--cc-navy)]">
           Status:{" "}
@@ -342,13 +397,22 @@ function DistrictScreen() {
             {ssoDemoConnected ? "Connected (demo)" : "Not connected"}
           </span>
         </p>
-        <button
-          type="button"
-          onClick={() => setPage("legal")}
-          className="mt-3 text-sm font-semibold text-[var(--cc-blue)] hover:underline"
-        >
-          Legal readiness checklist →
-        </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setPage("legal")}
+            className="text-sm font-semibold text-[var(--cc-blue)] hover:underline"
+          >
+            Legal &amp; safety checklist →
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage("programs")}
+            className="text-sm font-semibold text-[var(--cc-blue)] hover:underline"
+          >
+            Add a sport team →
+          </button>
+        </div>
       </Panel>
     </div>
   );
@@ -399,9 +463,10 @@ function ProgramsScreen() {
     <div className="space-y-4">
       <Panel title="Campus teams / programs">
         <p className="mb-3 text-sm text-[var(--cc-steel)]">
-          Add sports with a template. Football keeps full modules (Offense /
-          Defense / Special Teams, depth, scout…). Other sports use a single{" "}
-          <strong>Team</strong> unit with core modules.
+          Add every sport the campus runs. Football keeps full modules (Offense /
+          Defense / Special Teams). Other sports use a single{" "}
+          <strong>Team</strong> unit with core modules — safe to demo for
+          volleyball, basketball, and more.
         </p>
         <ul className="space-y-2">
           {programs.map((p) => {
@@ -588,30 +653,48 @@ function ProgramsScreen() {
 }
 
 function LegalScreen() {
-  const { legalChecklist, setLegalItem } = usePlatform();
+  const {
+    legalChecklist,
+    setLegalItem,
+    safetyToggles,
+    setSafetyToggle,
+    parentOptOuts,
+    toggleParentOptOut,
+    setPage,
+  } = usePlatform();
   const groups = ["legal", "security", "procurement"] as const;
   const done = LEGAL_CHECKLIST_ITEMS.filter((i) => legalChecklist[i.key]).length;
   const total = LEGAL_CHECKLIST_ITEMS.length;
   const pct = Math.round((done / total) * 100);
   const pilotLeft = CYFAIR_PILOT_KEYS.filter((k) => !legalChecklist[k]);
+  const safetyOn = SAFETY_TOGGLE_ITEMS.filter((i) => safetyToggles[i.key]).length;
 
   return (
     <div className="space-y-4">
-      <Panel title="District sales readiness">
+      <Panel title="Legal &amp; fully safe for the district">
         <p className="text-sm text-[var(--cc-steel)]">
-          Checklist for selling to school districts (FERPA / PPRA / HIPAA scope,
-          security, procurement). Not legal advice — track progress for demos
-          and real counsel work.
+          Show counsel and ADs how student data is minimized, who can see what,
+          and that Fan / Parent never expose staff-only records. Not legal
+          advice — a working checklist for demos and real counsel review.
         </p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
           <div className="rounded-xl border border-[var(--cc-line)] bg-[var(--cc-field)] p-4">
             <p className="text-xs font-bold uppercase text-[var(--cc-steel)]">
-              Overall progress
+              Procurement checklist
             </p>
             <p className="mt-1 font-[family-name:var(--font-display)] text-3xl font-bold text-[var(--cc-navy)]">
               {pct}%
             </p>
             <ProgressBar value={done} max={total} />
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+            <p className="text-xs font-bold uppercase text-emerald-800">
+              Safety controls on
+            </p>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-3xl font-bold text-[var(--cc-navy)]">
+              {safetyOn}/{SAFETY_TOGGLE_ITEMS.length}
+            </p>
+            <ProgressBar value={safetyOn} max={SAFETY_TOGGLE_ITEMS.length} />
           </div>
           <div className="rounded-xl border border-[var(--cc-blue)]/40 bg-white p-4 ring-1 ring-[var(--cc-blue)]/20">
             <p className="text-xs font-bold uppercase text-[var(--cc-blue)]">
@@ -619,27 +702,150 @@ function LegalScreen() {
             </p>
             {pilotLeft.length === 0 ? (
               <p className="mt-2 text-sm font-semibold text-emerald-700">
-                Pilot checklist complete — ready to walk ADs through Fan /
-                Parent / Export.
+                Pilot checklist complete — walk Fan / Parent / Export next.
               </p>
             ) : (
-              <ul className="mt-2 space-y-1.5 text-sm">
-                {pilotLeft.map((key) => {
+              <ul className="mt-2 space-y-1 text-sm">
+                {pilotLeft.slice(0, 4).map((key) => {
                   const item = LEGAL_CHECKLIST_ITEMS.find((i) => i.key === key)!;
                   return (
-                    <li key={key} className="flex items-start gap-2">
-                      <span className="mt-0.5 text-amber-600">•</span>
-                      <span className="font-medium text-[var(--cc-navy)]">
-                        {item.label}
-                      </span>
+                    <li key={key} className="font-medium text-[var(--cc-navy)]">
+                      • {item.label}
                     </li>
                   );
                 })}
+                {pilotLeft.length > 4 ? (
+                  <li className="text-xs text-[var(--cc-steel)]">
+                    +{pilotLeft.length - 4} more
+                  </li>
+                ) : null}
               </ul>
             )}
           </div>
         </div>
       </Panel>
+
+      <Panel title="Who can see what">
+        <p className="mb-3 text-sm text-[var(--cc-steel)]">
+          Field matrix for Fan site, Parent site, and staff. This is the “fully
+          safe” story for district buyers.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-[var(--cc-line)] text-xs uppercase text-[var(--cc-steel)]">
+                <th className="py-2 pr-3">Field</th>
+                <th className="py-2 pr-3">Fan</th>
+                <th className="py-2 pr-3">Parent</th>
+                <th className="py-2 pr-3">Staff</th>
+                <th className="py-2">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {DATA_FIELD_MATRIX.map((row) => (
+                <tr
+                  key={row.field}
+                  className="border-b border-[var(--cc-line)]/70"
+                >
+                  <td className="py-2 pr-3 font-medium text-[var(--cc-navy)]">
+                    {row.field}
+                  </td>
+                  <td className="py-2 pr-3">
+                    <YesNo ok={row.fan} />
+                  </td>
+                  <td className="py-2 pr-3">
+                    <YesNo ok={row.parent} />
+                  </td>
+                  <td className="py-2 pr-3">
+                    <YesNo ok={row.staff} />
+                  </td>
+                  <td className="py-2 text-[var(--cc-steel)]">{row.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setPage("fan")}
+            className="text-sm font-semibold text-[var(--cc-blue)] hover:underline"
+          >
+            Open Fan site →
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage("parent")}
+            className="text-sm font-semibold text-[var(--cc-blue)] hover:underline"
+          >
+            Open Parent site →
+          </button>
+        </div>
+      </Panel>
+
+      <Panel title="Safety controls (live demo)">
+        <p className="mb-3 text-sm text-[var(--cc-steel)]">
+          Toggle these in front of an AD. Fan and Parent respect these rules in
+          this session.
+        </p>
+        <ul className="grid gap-2 md:grid-cols-2">
+          {SAFETY_TOGGLE_ITEMS.map((item) => (
+            <li
+              key={item.key}
+              className="flex gap-3 rounded-lg border border-[var(--cc-line)] px-3 py-2"
+            >
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={safetyToggles[item.key]}
+                onChange={(e) => setSafetyToggle(item.key, e.target.checked)}
+              />
+              <div>
+                <p className="font-semibold text-[var(--cc-navy)]">{item.label}</p>
+                <p className="text-sm text-[var(--cc-steel)]">{item.blurb}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Panel>
+
+      <Panel title="Directory opt-outs (FERPA)">
+        <p className="mb-3 text-sm text-[var(--cc-steel)]">
+          Parents can hide an athlete from the public Fan roster. Opted-out
+          athletes still appear for staff and (when linked) Parent.
+        </p>
+        <ul className="space-y-2">
+          {DEMO_ROSTER.map((a) => {
+            const key = a.jersey;
+            const opted = parentOptOuts.has(key);
+            return (
+              <li
+                key={key}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--cc-line)] px-3 py-2"
+              >
+                <span className="font-medium text-[var(--cc-navy)]">
+                  #{a.jersey} {a.name}{" "}
+                  <span className="text-sm font-normal text-[var(--cc-steel)]">
+                    · {a.pos}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleParentOptOut(key)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                    opted
+                      ? "bg-amber-100 text-amber-900"
+                      : "border border-[var(--cc-line)] text-[var(--cc-navy)]"
+                  }`}
+                >
+                  {opted ? "Opted out of Fan" : "Visible on Fan"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Panel>
+
       {groups.map((group) => {
         const items = LEGAL_CHECKLIST_ITEMS.filter((i) => i.group === group);
         const groupDone = items.filter((i) => legalChecklist[i.key]).length;
@@ -684,6 +890,20 @@ function LegalScreen() {
         );
       })}
     </div>
+  );
+}
+
+function YesNo({ ok }: { ok: boolean }) {
+  return (
+    <span
+      className={`inline-flex rounded-md px-2 py-0.5 text-xs font-bold ${
+        ok
+          ? "bg-emerald-100 text-emerald-800"
+          : "bg-[var(--cc-field)] text-[var(--cc-steel)]"
+      }`}
+    >
+      {ok ? "Yes" : "No"}
+    </span>
   );
 }
 
@@ -799,10 +1019,23 @@ function DataScreen() {
 }
 
 function FanScreen() {
-  const { activeProgram, campus, district } = usePlatform();
+  const {
+    activeProgram,
+    campus,
+    district,
+    parentOptOuts,
+    safetyToggles,
+    setPage,
+  } = usePlatform();
   const nextGame =
-    DEMO_SCHEDULE.find((g) => !g.result) ?? DEMO_SCHEDULE[DEMO_SCHEDULE.length - 1]!;
+    DEMO_SCHEDULE.find((g) => !g.result) ??
+    DEMO_SCHEDULE[DEMO_SCHEDULE.length - 1]!;
   const recentResult = DEMO_SCHEDULE.filter((g) => g.result).at(-1);
+  const honorOptOut = safetyToggles.honorDirectoryOptOut;
+  const publicRoster = DEMO_ROSTER.filter(
+    (a) => !(honorOptOut && parentOptOuts.has(a.jersey)),
+  );
+  const hiddenCount = DEMO_ROSTER.length - publicRoster.length;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[var(--cc-line)] bg-white shadow-sm">
@@ -820,15 +1053,31 @@ function FanScreen() {
         />
         <div className="relative">
           <p className="text-sm font-semibold uppercase tracking-wider text-white/75">
-            {campus.name} · {district.name}
+            {campus.name} · {district.name} · Public Fan site
           </p>
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl font-bold tracking-tight sm:text-5xl">
             {activeProgram.name}
           </h1>
           <p className="mt-2 max-w-xl text-lg text-white/90">
-            {activeProgram.seasonLabel} season · public schedule, results, and
-            directory roster
+            {activeProgram.seasonLabel} season · schedule, results, and
+            directory roster only
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="rounded-md bg-white/15 px-2.5 py-1 text-xs font-semibold">
+              No grades
+            </span>
+            <span className="rounded-md bg-white/15 px-2.5 py-1 text-xs font-semibold">
+              No contacts
+            </span>
+            <span className="rounded-md bg-white/15 px-2.5 py-1 text-xs font-semibold">
+              No scout
+            </span>
+            {safetyToggles.blockGradesOnFan ? null : (
+              <span className="rounded-md bg-amber-400/90 px-2.5 py-1 text-xs font-bold text-[var(--cc-navy)]">
+                Demo: grades block OFF
+              </span>
+            )}
+          </div>
           <div className="fan-next-game mt-8 max-w-md rounded-2xl border border-white/25 bg-white/10 p-5 backdrop-blur-sm">
             <p className="text-[11px] font-bold uppercase tracking-widest text-white/70">
               Next game
@@ -904,8 +1153,16 @@ function FanScreen() {
             Roster
           </h2>
           <p className="mt-1 text-xs text-[var(--cc-steel)]">
-            Directory fields only — no grades, contacts, or scout
+            Directory fields only
+            {hiddenCount > 0
+              ? ` · ${hiddenCount} hidden by parent opt-out`
+              : ""}
           </p>
+          {!safetyToggles.blockContactsOnFan ? (
+            <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
+              Safety demo: contacts block is OFF — production keeps this on.
+            </p>
+          ) : null}
           <table className="mt-3 w-full text-left text-sm">
             <thead>
               <tr className="border-b border-[var(--cc-line)] text-xs uppercase text-[var(--cc-steel)]">
@@ -916,7 +1173,7 @@ function FanScreen() {
               </tr>
             </thead>
             <tbody>
-              {DEMO_ROSTER.map((a) => (
+              {publicRoster.map((a) => (
                 <tr
                   key={a.jersey}
                   className="border-b border-[var(--cc-line)]/60"
@@ -929,6 +1186,13 @@ function FanScreen() {
               ))}
             </tbody>
           </table>
+          <button
+            type="button"
+            onClick={() => setPage("legal")}
+            className="mt-4 text-sm font-semibold text-[var(--cc-blue)] hover:underline"
+          >
+            Manage opt-outs &amp; safety →
+          </button>
         </div>
       </div>
     </div>
@@ -936,7 +1200,12 @@ function FanScreen() {
 }
 
 function ParentScreen() {
-  const { activeProgram, campus } = usePlatform();
+  const {
+    activeProgram,
+    campus,
+    safetyToggles,
+    setPage,
+  } = usePlatform();
   const [childJersey, setChildJersey] = useState(DEMO_ROSTER[0]!.jersey);
   const child =
     DEMO_ROSTER.find((a) => a.jersey === childJersey) ?? DEMO_ROSTER[0]!;
@@ -945,7 +1214,7 @@ function ParentScreen() {
   return (
     <div className="space-y-4">
       <Panel
-        title="Parent portal"
+        title="Parent site"
         action={
           <label className="flex items-center gap-2 text-sm">
             <span className="font-semibold text-[var(--cc-steel)]">Child</span>
@@ -964,9 +1233,27 @@ function ParentScreen() {
         }
       >
         <p className="text-sm text-[var(--cc-steel)]">
-          {campus.name} · {activeProgram.name}. Guardians see schedule and
-          their linked athlete — not full staff tools.
+          {campus.name} · {activeProgram.name}. Guardians see schedule and their
+          linked athlete — not full staff tools
+          {safetyToggles.blockScoutOnParent ? ", scout, or film" : ""}.
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+            Linked athlete only
+          </span>
+          <span className="rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+            No full gradebook
+          </span>
+          {safetyToggles.blockScoutOnParent ? (
+            <span className="rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+              No scout / film
+            </span>
+          ) : (
+            <span className="rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200">
+              Scout block OFF (demo)
+            </span>
+          )}
+        </div>
       </Panel>
       <div className="grid gap-4 md:grid-cols-2">
         <Panel title="Your athlete">
@@ -1014,8 +1301,10 @@ function ParentScreen() {
       </Panel>
       <Panel title="Eligibility">
         <p className="text-sm text-[var(--cc-steel)]">
-          Summary only for guardians. Detailed gradebooks stay permission-gated
-          in the staff app.
+          Summary only for guardians
+          {safetyToggles.requireStaffRoleForGrades
+            ? ". Detailed gradebooks stay permission-gated in the staff app."
+            : " (staff gradebook gate is OFF in this demo)."}
         </p>
         <dl className="mt-3 grid gap-2 sm:grid-cols-3">
           <div className="rounded-lg border border-[var(--cc-line)] px-3 py-2">
@@ -1033,6 +1322,13 @@ function ParentScreen() {
             </dd>
           </div>
         </dl>
+        <button
+          type="button"
+          onClick={() => setPage("legal")}
+          className="mt-4 text-sm font-semibold text-[var(--cc-blue)] hover:underline"
+        >
+          See field matrix &amp; safety →
+        </button>
       </Panel>
     </div>
   );

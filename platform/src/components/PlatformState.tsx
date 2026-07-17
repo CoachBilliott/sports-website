@@ -15,6 +15,7 @@ import {
   SPORT_OPTIONS,
   configForProgram,
   emptyLegalChecklist,
+  emptySafetyToggles,
   seedAuditEvents,
   type AuditEvent,
   type LegalChecklistKey,
@@ -22,6 +23,8 @@ import {
   type OrgCampus,
   type OrgDistrict,
   type ProgramConfig,
+  type SafetyToggleKey,
+  type SafetyToggleState,
   type SportId,
   type SportProgram,
 } from "@/lib/programConfig";
@@ -54,11 +57,15 @@ type PlatformContextValue = {
   removeProgram: (id: string) => void;
   legalChecklist: LegalChecklistState;
   setLegalItem: (key: LegalChecklistKey, value: boolean) => void;
+  safetyToggles: SafetyToggleState;
+  setSafetyToggle: (key: SafetyToggleKey, value: boolean) => void;
   auditEvents: AuditEvent[];
   logAudit: (action: string, detail: string, actor?: string) => void;
   ssoDemoConnected: boolean;
   setSsoDemoConnected: (v: boolean) => void;
   sportOptions: typeof SPORT_OPTIONS;
+  parentOptOuts: Set<string>;
+  toggleParentOptOut: (athleteKey: string) => void;
 };
 
 const Ctx = createContext<PlatformContextValue | null>(null);
@@ -71,8 +78,13 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
   const [activeProgramId, setActiveProgramId] = useState(SEED_PROGRAMS[0]!.id);
   const [legalChecklist, setLegalChecklist] =
     useState<LegalChecklistState>(emptyLegalChecklist);
+  const [safetyToggles, setSafetyToggles] =
+    useState<SafetyToggleState>(emptySafetyToggles);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>(seedAuditEvents);
   const [ssoDemoConnected, setSsoDemoConnectedState] = useState(false);
+  const [parentOptOuts, setParentOptOuts] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const logAudit = useCallback(
     (action: string, detail: string, actor = "Admin") => {
@@ -145,6 +157,30 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     [logAudit],
   );
 
+  const setSafetyToggle = useCallback(
+    (key: SafetyToggleKey, value: boolean) => {
+      setSafetyToggles((prev) => ({ ...prev, [key]: value }));
+      logAudit("safety_control", `${key} → ${value ? "on" : "off"}`);
+    },
+    [logAudit],
+  );
+
+  const toggleParentOptOut = useCallback(
+    (athleteKey: string) => {
+      setParentOptOuts((prev) => {
+        const next = new Set(prev);
+        if (next.has(athleteKey)) next.delete(athleteKey);
+        else next.add(athleteKey);
+        logAudit(
+          "directory_opt_out",
+          `${athleteKey} → ${next.has(athleteKey) ? "opted out of Fan directory" : "visible on Fan"}`,
+        );
+        return next;
+      });
+    },
+    [logAudit],
+  );
+
   const activeProgram =
     programs.find((p) => p.id === activeProgramId) ?? programs[0]!;
   const activeConfig = configForProgram(activeProgram);
@@ -164,6 +200,8 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       removeProgram,
       legalChecklist,
       setLegalItem,
+      safetyToggles,
+      setSafetyToggle,
       auditEvents,
       logAudit,
       ssoDemoConnected,
@@ -175,6 +213,8 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
         );
       },
       sportOptions: SPORT_OPTIONS,
+      parentOptOuts,
+      toggleParentOptOut,
     }),
     [
       page,
@@ -186,9 +226,13 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       removeProgram,
       legalChecklist,
       setLegalItem,
+      safetyToggles,
+      setSafetyToggle,
       auditEvents,
       logAudit,
       ssoDemoConnected,
+      parentOptOuts,
+      toggleParentOptOut,
     ],
   );
 
