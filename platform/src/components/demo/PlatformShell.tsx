@@ -13,6 +13,7 @@ import { FanScreen } from "./screens/FanScreen";
 import { ParentScreen } from "./screens/ParentScreen";
 import { LegalScreen } from "./screens/LegalScreen";
 import { AuditScreen, DataScreen } from "./screens/AuditDataScreens";
+import { asset } from "@/lib/asset";
 
 const NAV: { id: PlatformPage; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -81,7 +82,7 @@ function PlatformShellInner() {
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/cypress-creek-logo.png"
+              src={asset("/cypress-creek-logo.png")}
               alt=""
               className="hidden h-10 w-10 rounded-lg bg-white/10 object-contain p-0.5 sm:block"
             />
@@ -120,7 +121,7 @@ function PlatformShellInner() {
               Present Fan
             </button>
             <a
-              href="http://localhost:3000"
+              href="/"
               className="rounded-lg border border-white/30 px-3 py-1.5 text-xs font-semibold text-white/90 hover:bg-white/10"
             >
               Football Team OS →

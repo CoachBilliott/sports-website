@@ -13011,7 +13011,7 @@ export function AppShell() {
               Cy Creek Football · Team OS
               {" · "}
               <a
-                href="http://localhost:3001"
+                href="/district/demo"
                 className="font-semibold text-[var(--cc-blue)] hover:underline"
               >
                 Platform

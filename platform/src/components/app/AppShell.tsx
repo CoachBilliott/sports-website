@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { AppProvider, useApp, ROLE_SHORT } from "./AppProvider";
 import type { Permission } from "@/lib/data/org";
+import { asset } from "@/lib/asset";
 
 type NavItem = {
   href: string;
@@ -106,7 +107,7 @@ function ShellInner({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={snap.brandLogoUrl || "/cypress-creek-logo.png"}
+              src={asset(snap.brandLogoUrl || "/cypress-creek-logo.png")}
               alt=""
               className="hidden h-10 w-10 rounded-lg bg-white/10 object-contain p-0.5 sm:block"
             />

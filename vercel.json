@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/district",
+      "destination": "/district/index.html"
+    },
+    {
+      "source": "/district/",
+      "destination": "/district/index.html"
+    },
+    {
+      "source": "/district/:path((?!_next/).+)/",
+      "destination": "/district/:path/index.html"
+    },
+    {
+      "source": "/district/:path((?!_next/)(?!.*\\.).+)",
+      "destination": "/district/:path/index.html"
+    }
+  ]
+}

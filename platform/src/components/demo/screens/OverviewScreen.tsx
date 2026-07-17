@@ -9,6 +9,7 @@ import {
 import { DEMO_SCRIPT } from "@/lib/demoContent";
 import { usePlatform } from "../PlatformState";
 import { Badge, GhostButton, Panel, ProgressBar, PrimaryButton, StatTile } from "@/components/ui";
+import { asset } from "@/lib/asset";
 
 export function OverviewScreen() {
   const {
@@ -49,7 +50,7 @@ export function OverviewScreen() {
         <div className="flex flex-wrap items-center gap-5 px-6 py-7 sm:px-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/cypress-creek-logo.png"
+            src={asset("/cypress-creek-logo.png")}
             alt="Cypress Creek"
             className="h-16 w-16 rounded-xl bg-white/10 object-contain p-1"
           />

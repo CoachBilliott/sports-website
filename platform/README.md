@@ -16,7 +16,17 @@ In-memory data layer — swap `MemoryRepository` for Supabase/API later.
 
 Controls and invites follow this ladder (`src/lib/data/org.ts`).
 
-## Run
+## Share (live)
+
+Same Vercel site as football Team OS, under `/district/`:
+
+- https://sports-website-navy.vercel.app/district/demo/
+- https://sports-website-navy.vercel.app/district/login/
+- https://sports-website-navy.vercel.app/district/app/
+- https://sports-website-navy.vercel.app/district/fan/football/
+- https://sports-website-navy.vercel.app/district/parent/
+
+## Run (local)
 
 ```bash
 cd platform
@@ -24,14 +34,18 @@ npm install
 npm run dev
 ```
 
-- App: http://localhost:3001/app  
-- Fan: http://localhost:3001/fan/football  
-- Parent: http://localhost:3001/parent  
-- Login: http://localhost:3001/login  
-- Onboarding: http://localhost:3001/onboarding  
-- AD walkthrough (saved): http://localhost:3001/demo  
+Local has **no** `/district` prefix:
+
+- App: http://localhost:3001/app/  
+- Fan: http://localhost:3001/fan/football/  
+- Parent: http://localhost:3001/parent/  
+- Login: http://localhost:3001/login/  
+- Onboarding: http://localhost:3001/onboarding/  
+- AD walkthrough (saved): http://localhost:3001/demo/  
 
 Seeded DAD: `alex.nguyen.dad@cyfair.isd.demo` (any password). Login also has one-click role chips.
+
+Production embed (from repo root): `NEXT_PUBLIC_BASE_PATH=/district` → static files copied to `public/district/` during `npm run build`.
 
 ## App routes
 

@@ -7,6 +7,7 @@ import { AppProvider, useApp, ROLE_SHORT } from "@/components/app/AppProvider";
 import { Panel, PrimaryButton } from "@/components/ui";
 import { DISTRICT_CHAIN } from "@/lib/data/org";
 import type { Role } from "@/lib/data/types";
+import { asset } from "@/lib/asset";
 
 const CHIP_ORDER: Role[] = [
   ...DISTRICT_CHAIN,
@@ -53,7 +54,7 @@ function LoginForm() {
       <div className="mb-6 text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/cypress-creek-logo.png"
+          src={asset("/cypress-creek-logo.png")}
           alt=""
           className="mx-auto h-16 w-16 object-contain"
         />

@@ -388,5 +388,9 @@ export const OPPONENT_LOGO: Record<string, string> = {
 };
 
 export function logoForOpponent(name: string): string | null {
-  return OPPONENT_LOGO[name] ?? null;
+  const path = OPPONENT_LOGO[name];
+  if (!path) return null;
+  // Lazy import avoided — basePath is compile-time via NEXT_PUBLIC_BASE_PATH
+  const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
+  return `${base}${path}`;
 }

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "dev:share": "next dev -H 0.0.0.0 -p 3000",
     "platform": "npm run dev --prefix platform",
-    "build": "next build",
+    "build:platform": "npm install --prefix platform && NEXT_PUBLIC_BASE_PATH=/district npm run build --prefix platform && rm -rf public/district && mkdir -p public/district && cp -a platform/out/. public/district/",
+    "build": "npm run build:platform && next build",
     "start": "next start",
     "lint": "eslint"
   },

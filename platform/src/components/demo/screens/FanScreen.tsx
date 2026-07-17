@@ -3,6 +3,7 @@
 import { FAN_NEWS, contentForSport, logoForOpponent } from "@/lib/demoContent";
 import { usePlatform } from "../PlatformState";
 import { Badge, GhostButton } from "@/components/ui";
+import { asset } from "@/lib/asset";
 
 export function FanScreen() {
   const {
@@ -59,7 +60,7 @@ export function FanScreen() {
             <div className="flex flex-wrap items-center gap-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/cypress-creek-logo.png"
+                src={asset("/cypress-creek-logo.png")}
                 alt=""
                 className="h-20 w-20 rounded-2xl bg-white/10 object-contain p-1.5 ring-1 ring-white/20"
               />

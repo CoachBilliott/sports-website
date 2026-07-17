@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { RequirePerm } from "@/components/app/RequirePerm";
 import { useApp } from "@/components/app/AppProvider";
 import { Badge, Panel, PrimaryButton } from "@/components/ui";
+import { asset } from "@/lib/asset";
 
 export default function SettingsPage() {
   const {
@@ -81,7 +82,7 @@ export default function SettingsPage() {
           <div className="flex flex-wrap items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={snap.brandLogoUrl || "/cypress-creek-logo.png"}
+              src={asset(snap.brandLogoUrl || "/cypress-creek-logo.png")}
               alt=""
               className="h-16 w-16 rounded-xl border border-[var(--cc-line)] object-contain p-1"
             />

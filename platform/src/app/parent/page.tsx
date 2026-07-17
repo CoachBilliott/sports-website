@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AppProvider, useApp, ROLE_SHORT } from "@/components/app/AppProvider";
 import { Badge, Panel } from "@/components/ui";
+import { asset } from "@/lib/asset";
 
 function ParentPortal() {
   const { snap, activeProgram, setActiveProgram, signIn } = useApp();
@@ -172,7 +173,7 @@ function ParentPortal() {
                 >
                   <span>{d.title}</span>
                   <a
-                    href={d.href}
+                    href={asset(d.href)}
                     target="_blank"
                     rel="noreferrer"
                     className="font-semibold text-[var(--cc-blue)]"
