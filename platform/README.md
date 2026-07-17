@@ -1,31 +1,11 @@
-# Team OS Platform (separate app)
+# Platform
 
-District readiness, multi-sport teams, Fan page, and Parent portal.
+Standalone Next.js app for district sales, multi-sport teams, Fan, and Parent.
 
-This app is **separate** from the Cy Creek Football Team OS in the repo root (`src/`). Football UI is unchanged.
-
-## Run
-
-From repo root:
+**→ Full handoff for agents:** [HANDOFF.md](./HANDOFF.md)
 
 ```bash
-npm run platform
+npm install && npm run dev
 ```
 
-Or:
-
-```bash
-cd platform && npm install && npm run dev
-```
-
-Open [http://localhost:3001](http://localhost:3001).
-
-Football Team OS stays on [http://localhost:3000](http://localhost:3000).
-
-## What’s here
-
-- District tenancy tree + SSO demo toggle
-- Add teams via sport templates (football full modules; others core)
-- Legal / FERPA-style readiness checklist
-- Audit log + export/delete demos
-- Fan page + Parent portal previews
+http://localhost:3001

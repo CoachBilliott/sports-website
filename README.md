@@ -49,5 +49,5 @@ npm run platform
 
 Open [http://localhost:3001](http://localhost:3001).
 
-Agent brief: [`platform/AGENTS.md`](platform/AGENTS.md) · Plan: [`platform/PLAN.md`](platform/PLAN.md)
+**New agent handoff (everything in one file):** [`platform/HANDOFF.md`](platform/HANDOFF.md)
 
