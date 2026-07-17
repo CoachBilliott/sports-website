@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/app/PageHeader";
+import { RequirePerm } from "@/components/app/RequirePerm";
 import { useApp, ROLE_LABEL, ROLE_SHORT } from "@/components/app/AppProvider";
 import { Badge, Panel, PrimaryButton } from "@/components/ui";
 import { DISTRICT_CHAIN, ROLE_RANK } from "@/lib/data/org";
@@ -14,6 +15,7 @@ export default function MembersPage() {
     activeProgram,
     inviteMember,
     removeMember,
+    updateMember,
     invitableRoles,
     can,
     role,
@@ -43,6 +45,7 @@ export default function MembersPage() {
     : (["coach"] as Role[]);
 
   return (
+    <RequirePerm perm="manage_members" label="people & invites">
     <div className="space-y-4">
       <PageHeader
         title="People"
@@ -103,17 +106,27 @@ export default function MembersPage() {
                       {campus?.short ?? m.scope}
                     </td>
                     <td className="py-2">
-                      <Badge
-                        tone={
-                          m.status === "active"
-                            ? "good"
-                            : m.status === "invited"
-                              ? "warn"
-                              : "neutral"
+                      <select
+                        value={m.status}
+                        onChange={(e) =>
+                          updateMember(m.id, {
+                            status: e.target.value as
+                              | "active"
+                              | "invited"
+                              | "disabled",
+                          })
+                        }
+                        className="rounded-md border border-[var(--cc-line)] px-2 py-1 text-xs font-semibold"
+                        disabled={
+                          !can("manage_members") ||
+                          !role ||
+                          ROLE_RANK[m.role] <= ROLE_RANK[role]
                         }
                       >
-                        {m.status}
-                      </Badge>
+                        <option value="active">active</option>
+                        <option value="invited">invited</option>
+                        <option value="disabled">disabled</option>
+                      </select>
                     </td>
                     <td className="py-2 text-right">
                       {can("manage_members") &&
@@ -210,5 +223,6 @@ export default function MembersPage() {
         </Panel>
       )}
     </div>
+    </RequirePerm>
   );
 }

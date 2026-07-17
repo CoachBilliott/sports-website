@@ -22,6 +22,8 @@ function Wizard() {
     updateOnboarding,
     completeOnboarding,
     createProgram,
+    inviteMember,
+    updateProgram,
   } = useApp();
   const router = useRouter();
   const step = snap.onboarding.step;
@@ -29,15 +31,29 @@ function Wizard() {
 
   function next() {
     if (step >= STEPS.length - 1) {
-      createProgram({
+      const created = createProgram({
         name: ob.programName || "New program",
         sport: ob.sport,
         seasonLabel: "2026",
         levels: ob.levels,
         campusId: snap.session?.campusId ?? snap.campuses[0]!.id,
       });
+      if (ob.maxPrepsUrl.trim()) {
+        updateProgram(created.id, { maxPrepsUrl: ob.maxPrepsUrl.trim() });
+      }
+      for (const email of ob.staffEmails) {
+        inviteMember({
+          name: email.split("@")[0] || email,
+          email,
+          role: "coach",
+          scope: created.name,
+          programIds: [created.id],
+          campusId: created.campusId,
+          reportsToId: snap.session?.id,
+        });
+      }
       completeOnboarding();
-      router.push("/app");
+      router.push("/app/team");
       return;
     }
     setOnboardingStep(step + 1);

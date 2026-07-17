@@ -62,7 +62,7 @@ type AppContextValue = {
   setActiveUnit: (unitId: string) => void;
   setActiveProgram: (id: string) => void;
   setActiveCampus: (id: string) => void;
-  createProgram: (input: CreateProgramInput) => void;
+  createProgram: (input: CreateProgramInput) => Program;
   updateProgram: (id: string, patch: Partial<Program>) => void;
   deleteProgram: (id: string) => void;
   setLegal: (key: LegalItemKey, value: boolean) => void;
@@ -100,6 +100,11 @@ type AppContextValue = {
   setInstall: (text: string) => void;
   updateGame: (id: string, patch: Partial<Game>) => void;
   addGame: (game: Omit<Game, "id">) => void;
+  rollSeason: (nextSeasonLabel: string) => void;
+  updateDistrict: (patch: { name?: string }) => void;
+  setBrandLogoUrl: (url: string | null) => void;
+  removeGame: (id: string) => void;
+  updateMember: (id: string, patch: Partial<Member>) => void;
   setOnboardingStep: (step: number) => void;
   completeOnboarding: () => void;
   updateOnboarding: (patch: Partial<PlatformSnapshot["onboarding"]>) => void;
@@ -124,6 +129,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const needsMigrate =
       !snap0.activeCampusId ||
       !snap0.team?.depthSlots ||
+      snap0.brandLogoUrl === undefined ||
       snap0.members.some(
         (m) =>
           (m.role as string) === "district_admin" ||
@@ -186,7 +192,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       run(() => repo.setActiveUnit(activeProgram.id, unitId)),
     setActiveProgram: (id) => run(() => repo.setActiveProgram(id)),
     setActiveCampus: (id) => run(() => repo.setActiveCampus(id)),
-    createProgram: (input) => run(() => repo.createProgram(input)),
+    createProgram: (input) => {
+      let created!: Program;
+      run(() => {
+        created = repo.createProgram(input);
+      });
+      return created;
+    },
     updateProgram: (id, patch) => run(() => repo.updateProgram(id, patch)),
     deleteProgram: (id) => run(() => repo.deleteProgram(id)),
     setLegal: (k, v) => run(() => repo.setLegal(k, v)),
@@ -223,6 +235,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       run(() => repo.setInstall(activeProgram.id, activeUnitId, text)),
     updateGame: (id, patch) => run(() => repo.updateGame(id, patch)),
     addGame: (game) => run(() => repo.addGame(game)),
+    rollSeason: (label) =>
+      run(() => repo.rollSeason(activeProgram.id, label)),
+    updateDistrict: (patch) => run(() => repo.updateDistrict(patch)),
+    setBrandLogoUrl: (url) => run(() => repo.setBrandLogoUrl(url)),
+    removeGame: (id) => run(() => repo.removeGame(id)),
+    updateMember: (id, patch) => run(() => repo.updateMember(id, patch)),
     setOnboardingStep: (step) => run(() => repo.setOnboardingStep(step)),
     completeOnboarding: () => run(() => repo.completeOnboarding()),
     updateOnboarding: (patch) => run(() => repo.updateOnboarding(patch)),

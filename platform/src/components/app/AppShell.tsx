@@ -44,9 +44,47 @@ function ShellInner({ children }: { children: ReactNode }) {
     can: canDo,
     roleLabel,
     switchToMember,
+    role,
   } = useApp();
 
+  if (role === "parent" && pathname.startsWith("/app")) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <p className="font-semibold text-[var(--cc-navy)]">
+          Parents use the Parent portal
+        </p>
+        <Link
+          href="/parent"
+          className="mt-3 inline-block text-[var(--cc-blue)] font-semibold"
+        >
+          Open Parent portal →
+        </Link>
+      </div>
+    );
+  }
+  if (role === "player" && pathname.startsWith("/app")) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <p className="font-semibold text-[var(--cc-navy)]">
+          Players use the Player portal
+        </p>
+        <Link
+          href="/player"
+          className="mt-3 inline-block text-[var(--cc-blue)] font-semibold"
+        >
+          Open Player portal →
+        </Link>
+      </div>
+    );
+  }
+
   const visibleNav = NAV.filter((item) => !item.perm || canDo(item.perm));
+  const canAllCampuses = canDo("view_all_campuses");
+  const campusOptions = canAllCampuses
+    ? snap.campuses
+    : snap.campuses.filter(
+        (c) => c.id === (snap.session?.campusId ?? activeCampus.id),
+      );
 
   const previewOptions = snap.members.filter((m) =>
     [
@@ -56,6 +94,8 @@ function ShellInner({ children }: { children: ReactNode }) {
       "athletic_campus_coordinator",
       "assistant_athletic_campus_coordinator",
       "head_coach",
+      "coach",
+      "parent",
     ].includes(m.role),
   );
 
@@ -66,7 +106,7 @@ function ShellInner({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/cypress-creek-logo.png"
+              src={snap.brandLogoUrl || "/cypress-creek-logo.png"}
               alt=""
               className="hidden h-10 w-10 rounded-lg bg-white/10 object-contain p-0.5 sm:block"
             />
@@ -86,9 +126,10 @@ function ShellInner({ children }: { children: ReactNode }) {
               <select
                 value={activeCampus.id}
                 onChange={(e) => setActiveCampus(e.target.value)}
-                className="max-w-[10rem] rounded-md border border-white/30 bg-[var(--cc-navy)] px-2 py-1 font-semibold text-white"
+                disabled={campusOptions.length <= 1}
+                className="max-w-[10rem] rounded-md border border-white/30 bg-[var(--cc-navy)] px-2 py-1 font-semibold text-white disabled:opacity-70"
               >
-                {snap.campuses.map((c) => (
+                {campusOptions.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.short}
                   </option>
@@ -156,6 +197,12 @@ function ShellInner({ children }: { children: ReactNode }) {
               className="rounded-lg border border-white/30 px-3 py-1.5 text-xs font-semibold hover:bg-white/10"
             >
               Parent
+            </Link>
+            <Link
+              href="/player"
+              className="rounded-lg border border-white/30 px-3 py-1.5 text-xs font-semibold hover:bg-white/10"
+            >
+              Player
             </Link>
             {snap.session ? (
               <button

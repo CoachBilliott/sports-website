@@ -243,7 +243,18 @@ export function createSeedSnapshot(): PlatformSnapshot {
       scope: "Linked athletes",
       campusId: cyCreek.id,
       programIds: [fb.id],
-      status: "invited",
+      status: "active",
+    },
+    {
+      id: "player-1",
+      name: "Alex Reyes",
+      email: "areyes.player@cyfair.isd.demo",
+      role: "player",
+      scope: "Cy Creek Football · #7",
+      campusId: cyCreek.id,
+      programIds: [fb.id],
+      status: "active",
+      reportsToId: "hc-fb",
     },
   ];
 
@@ -296,15 +307,26 @@ export function createSeedSnapshot(): PlatformSnapshot {
       ...gamesFrom(fb.id, FOOTBALL_SCHEDULE),
       ...gamesFrom(vb.id, VOLLEYBALL_SCHEDULE),
     ],
-    announcements: PARENT_ANNOUNCEMENTS.map((a) => ({
-      id: a.id,
-      programId: fb.id,
-      campusId: cyCreek.id,
-      dateLabel: a.date,
-      title: a.title,
-      body: a.body,
-      audience: "parent" as const,
-    })),
+    announcements: [
+      ...PARENT_ANNOUNCEMENTS.map((a) => ({
+        id: a.id,
+        programId: fb.id,
+        campusId: cyCreek.id,
+        dateLabel: a.date,
+        title: a.title,
+        body: a.body,
+        audience: "parent" as const,
+      })),
+      {
+        id: "ann-public-1",
+        programId: fb.id,
+        campusId: cyCreek.id,
+        dateLabel: "Fri",
+        title: "Tickets on sale — Week 3",
+        body: "Student section opens 90 minutes before kickoff. Gates at the north plaza.",
+        audience: "public" as const,
+      },
+    ],
     audit,
     legal: legalDefaults(),
     safety: safetyDefaults(),
@@ -329,5 +351,23 @@ export function createSeedSnapshot(): PlatformSnapshot {
     activeCampusId: cyCreek.id,
     ssoConnected: false,
     team: buildTeamWorkspace(fb.id, vb.id, athletes),
+    brandLogoUrl: "/cypress-creek-logo.png",
+    parentDocs: [
+      {
+        id: "doc-1",
+        title: "Athletic handbook (PDF)",
+        href: "/docs/athletic-handbook.html",
+      },
+      {
+        id: "doc-2",
+        title: "Travel consent form",
+        href: "/docs/travel-consent.html",
+      },
+      {
+        id: "doc-3",
+        title: "Booster calendar",
+        href: "/docs/booster-calendar.html",
+      },
+    ],
   };
 }

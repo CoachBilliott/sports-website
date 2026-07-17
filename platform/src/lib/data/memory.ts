@@ -518,6 +518,85 @@ export class MemoryRepository implements PlatformRepository {
   resetToSeed() {
     this.state = createSeedSnapshot();
   }
+
+  rollSeason(programId: string, nextSeasonLabel: string) {
+    const prog = this.state.programs.find((p) => p.id === programId);
+    if (!prog) return;
+    // Archive season-scoped data for this program
+    this.state.games = this.state.games.filter((g) => g.programId !== programId);
+    this.state.team.weekNotes = this.state.team.weekNotes.filter(
+      (n) => n.programId !== programId,
+    );
+    this.state.team.quizzes = this.state.team.quizzes.filter(
+      (q) => q.programId !== programId,
+    );
+    this.state.team.grades = this.state.team.grades.filter(
+      (g) => g.programId !== programId,
+    );
+    this.state.team.attendance = this.state.team.attendance.filter(
+      (a) => a.programId !== programId,
+    );
+    this.state.team.duties = this.state.team.duties.map((d) =>
+      d.programId === programId ? { ...d, status: "open" as const } : d,
+    );
+    this.state.team.activeWeekByProgram = {
+      ...this.state.team.activeWeekByProgram,
+      [programId]: 1,
+    };
+    // Promote seniors off roster (demo: drop Sr)
+    this.state.athletes = this.state.athletes.filter(
+      (a) => !(a.programId === programId && a.classYear === "Sr"),
+    );
+    // Bump underclass years
+    const bump: Record<string, string> = {
+      Fr: "So",
+      So: "Jr",
+      Jr: "Sr",
+    };
+    this.state.athletes = this.state.athletes.map((a) =>
+      a.programId === programId && bump[a.classYear]
+        ? { ...a, classYear: bump[a.classYear]! }
+        : a,
+    );
+    this.state.programs = this.state.programs.map((p) =>
+      p.id === programId
+        ? {
+            ...p,
+            seasonLabel: nextSeasonLabel,
+            athleteCount: this.state.athletes.filter((a) => a.programId === p.id)
+              .length,
+          }
+        : p,
+    );
+    this.recalcCounts(programId);
+    this.log(
+      "season.roll",
+      `Rolled ${prog.name} → ${nextSeasonLabel} (archived season data, promoted classes)`,
+    );
+  }
+
+  updateDistrict(patch: { name?: string }) {
+    this.state.district = { ...this.state.district, ...patch };
+    this.log("district.update", patch.name ?? "updated");
+  }
+
+  setBrandLogoUrl(url: string | null) {
+    this.state.brandLogoUrl = url;
+    this.log("branding.logo", url ? "Logo set" : "Logo cleared");
+  }
+
+  removeGame(id: string) {
+    const g = this.state.games.find((x) => x.id === id);
+    this.state.games = this.state.games.filter((x) => x.id !== id);
+    this.log("game.remove", g ? `${g.opponent} W${g.week}` : id);
+  }
+
+  updateMember(id: string, patch: Partial<import("./types").Member>) {
+    this.state.members = this.state.members.map((m) =>
+      m.id === id ? { ...m, ...patch, id: m.id } : m,
+    );
+    this.log("member.update", id);
+  }
 }
 
 let singleton: MemoryRepository | null = null;

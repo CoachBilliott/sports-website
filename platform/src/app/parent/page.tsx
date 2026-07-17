@@ -2,12 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AppProvider, useApp } from "@/components/app/AppProvider";
+import { AppProvider, useApp, ROLE_SHORT } from "@/components/app/AppProvider";
 import { Badge, Panel } from "@/components/ui";
-import { PARENT_DOCS } from "@/lib/demoContent";
 
 function ParentPortal() {
-  const { snap, activeProgram, setActiveProgram } = useApp();
+  const { snap, activeProgram, setActiveProgram, signIn } = useApp();
+  const parentMember = snap.members.find((m) => m.role === "parent");
+  const isParent = snap.session?.role === "parent";
+  const linkedIds = parentMember?.programIds?.length
+    ? snap.athletes
+        .filter((a) => a.programId === activeProgram.id)
+        .map((a) => a.id)
+    : [];
   const athletes = snap.athletes.filter((a) => a.programId === activeProgram.id);
   const [childId, setChildId] = useState(athletes[0]?.id ?? "");
   useEffect(() => {
@@ -23,6 +29,12 @@ function ParentPortal() {
   const announcements = snap.announcements.filter(
     (a) => a.programId === activeProgram.id && a.audience === "parent",
   );
+  const todayAtt = snap.team.attendance.find(
+    (a) => a.programId === activeProgram.id,
+  );
+  const childAtt = child
+    ? todayAtt?.records.find((r) => r.athleteId === child.id)?.status
+    : null;
 
   return (
     <div className="min-h-full">
@@ -34,6 +46,9 @@ function ParentPortal() {
             </p>
             <p className="text-xs text-white/70">
               {snap.district.name} · {activeProgram.name}
+              {snap.session
+                ? ` · ${snap.session.name} (${ROLE_SHORT[snap.session.role]})`
+                : ""}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -48,6 +63,23 @@ function ParentPortal() {
                 </option>
               ))}
             </select>
+            {!isParent && parentMember ? (
+              <button
+                type="button"
+                onClick={() => {
+                  signIn(parentMember.email);
+                }}
+                className="rounded-lg border border-white/30 px-3 py-1.5 text-xs font-semibold"
+              >
+                Sign in as parent
+              </button>
+            ) : null}
+            <Link
+              href={`/fan/${activeProgram.slug}`}
+              className="rounded-lg border border-white/30 px-3 py-1.5 text-xs font-semibold"
+            >
+              Fan site
+            </Link>
             <Link
               href="/app"
               className="rounded-lg border border-white/30 px-3 py-1.5 text-xs font-semibold"
@@ -59,6 +91,13 @@ function ParentPortal() {
       </header>
 
       <main className="mx-auto max-w-[90rem] space-y-4 px-4 py-6 sm:px-6">
+        {!isParent ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            Preview mode — click <strong>Sign in as parent</strong> for the
+            guardian session ({parentMember?.email ?? "parent@demo.local"}).
+          </div>
+        ) : null}
+
         <Panel
           title="Your athlete"
           action={
@@ -86,6 +125,13 @@ function ParentPortal() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <Badge tone="good">Eligible</Badge>
                 <Badge tone="good">No full gradebook</Badge>
+                {childAtt ? (
+                  <Badge tone={childAtt === "present" ? "good" : "warn"}>
+                    Today: {childAtt}
+                  </Badge>
+                ) : (
+                  <Badge>Attendance pending</Badge>
+                )}
                 {snap.safety.blockScoutOnParent ? (
                   <Badge tone="good">No scout</Badge>
                 ) : null}
@@ -106,6 +152,12 @@ function ParentPortal() {
                 <p className="text-sm text-[var(--cc-steel)]">
                   {next.date} · {next.time}
                 </p>
+                <Link
+                  href={`/fan/${activeProgram.slug}`}
+                  className="mt-2 inline-block text-sm font-semibold text-[var(--cc-blue)]"
+                >
+                  Full Fan schedule →
+                </Link>
               </>
             ) : (
               <p className="text-sm text-[var(--cc-steel)]">No upcoming game.</p>
@@ -113,15 +165,20 @@ function ParentPortal() {
           </Panel>
           <Panel title="Documents">
             <ul className="space-y-2">
-              {PARENT_DOCS.map((d) => (
+              {snap.parentDocs.map((d) => (
                 <li
                   key={d.id}
                   className="flex justify-between rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm"
                 >
                   <span>{d.title}</span>
-                  <span className="font-semibold text-[var(--cc-blue)]">
+                  <a
+                    href={d.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-[var(--cc-blue)]"
+                  >
                     View
-                  </span>
+                  </a>
                 </li>
               ))}
             </ul>
@@ -144,7 +201,33 @@ function ParentPortal() {
                 </div>
               </li>
             ))}
+            {!announcements.length ? (
+              <li className="text-sm text-[var(--cc-steel)]">
+                No parent announcements yet.
+              </li>
+            ) : null}
           </ul>
+        </Panel>
+
+        <Panel title="Forms & eligibility">
+          <ul className="space-y-2 text-sm">
+            <li className="flex justify-between rounded-lg border border-[var(--cc-line)] px-3 py-2">
+              <span>Physical on file</span>
+              <Badge tone="good">Complete</Badge>
+            </li>
+            <li className="flex justify-between rounded-lg border border-[var(--cc-line)] px-3 py-2">
+              <span>UIL acknowledgment</span>
+              <Badge tone="good">Complete</Badge>
+            </li>
+            <li className="flex justify-between rounded-lg border border-[var(--cc-line)] px-3 py-2">
+              <span>Emergency contacts</span>
+              <Badge tone="warn">Review yearly</Badge>
+            </li>
+          </ul>
+          <p className="mt-2 text-xs text-[var(--cc-steel)]">
+            Linked athletes in demo: {linkedIds.length || athletes.length}. No
+            grades or scout — safety toggles enforce that.
+          </p>
         </Panel>
       </main>
     </div>

@@ -6,6 +6,15 @@ import { useMemo, useState } from "react";
 import { AppProvider, useApp, ROLE_SHORT } from "@/components/app/AppProvider";
 import { Panel, PrimaryButton } from "@/components/ui";
 import { DISTRICT_CHAIN } from "@/lib/data/org";
+import type { Role } from "@/lib/data/types";
+
+const CHIP_ORDER: Role[] = [
+  ...DISTRICT_CHAIN,
+  "head_coach",
+  "coach",
+  "parent",
+  "player",
+];
 
 function LoginForm() {
   const { signIn, snap } = useApp();
@@ -13,30 +22,30 @@ function LoginForm() {
   const [email, setEmail] = useState("alex.nguyen.dad@cyfair.isd.demo");
 
   const quickRoles = useMemo(() => {
-    const picks: { label: string; email: string }[] = [];
-    const dad = snap.members.find((m) => m.role === "district_athletic_director");
-    const aad = snap.members.find((m) => m.role === "associate_athletic_director");
-    const dac = snap.members.find((m) => m.role === "district_athletic_coordinator");
-    const acc = snap.members.find(
-      (m) =>
-        m.role === "athletic_campus_coordinator" &&
-        m.campusId === snap.activeCampusId,
-    );
-    const asst = snap.members.find(
-      (m) =>
-        m.role === "assistant_athletic_campus_coordinator" &&
-        m.campusId === snap.activeCampusId,
-    );
-    const hc = snap.members.find((m) => m.role === "head_coach");
-    for (const m of [dad, aad, dac, acc, asst, hc]) {
-      if (m) picks.push({ label: ROLE_SHORT[m.role], email: m.email });
+    const picks: { label: string; email: string; role: Role }[] = [];
+    for (const role of CHIP_ORDER) {
+      const m =
+        role === "athletic_campus_coordinator" ||
+        role === "assistant_athletic_campus_coordinator"
+          ? snap.members.find(
+              (x) =>
+                x.role === role && x.campusId === snap.activeCampusId,
+            )
+          : snap.members.find((x) => x.role === role);
+      if (m) picks.push({ label: ROLE_SHORT[m.role], email: m.email, role });
     }
     return picks;
   }, [snap]);
 
   const go = (addr: string) => {
     signIn(addr);
-    router.push("/app");
+    const role = snap.members.find(
+      (m) => m.email.toLowerCase() === addr.toLowerCase(),
+    )?.role;
+    if (role === "parent") router.push("/parent");
+    else if (role === "player") router.push("/player");
+    else if (role === "head_coach" || role === "coach") router.push("/app/team");
+    else router.push("/app");
   };
 
   return (
@@ -57,7 +66,7 @@ function LoginForm() {
       </div>
       <Panel>
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--cc-steel)]">
-          Try a role (chain of command)
+          Try every profile
         </p>
         <div className="mb-4 flex flex-wrap gap-2">
           {quickRoles.map((q) => (
@@ -99,12 +108,13 @@ function LoginForm() {
           <PrimaryButton type="submit">Sign in</PrimaryButton>
         </form>
         <p className="mt-3 text-xs text-[var(--cc-steel)]">
-          Order: {DISTRICT_CHAIN.map((r) => ROLE_SHORT[r]).join(" → ")}. Any
-          password works in this UI. After sign-in, DAD/AAD can use{" "}
-          <strong>View as</strong> to preview every level.
+          Chain: {DISTRICT_CHAIN.map((r) => ROLE_SHORT[r]).join(" → ")} → HC →
+          Coach → Parent → Player. Any password works in this UI.
         </p>
-        <div className="mt-4 flex gap-3 text-sm font-semibold text-[var(--cc-blue)]">
+        <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold text-[var(--cc-blue)]">
           <Link href="/signup">Create account</Link>
+          <Link href="/parent">Parent</Link>
+          <Link href="/player">Player</Link>
           <Link href="/app">Skip to app</Link>
         </div>
       </Panel>

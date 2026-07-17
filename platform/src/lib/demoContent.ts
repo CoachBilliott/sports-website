@@ -290,9 +290,24 @@ export const PARENT_ANNOUNCEMENTS = [
 ];
 
 export const PARENT_DOCS = [
-  { id: "doc-1", title: "Athletic handbook (PDF)", kind: "Handbook" },
-  { id: "doc-2", title: "Travel consent form", kind: "Form" },
-  { id: "doc-3", title: "Booster calendar", kind: "Calendar" },
+  {
+    id: "doc-1",
+    title: "Athletic handbook (PDF)",
+    kind: "Handbook",
+    href: "/docs/athletic-handbook.html",
+  },
+  {
+    id: "doc-2",
+    title: "Travel consent form",
+    kind: "Form",
+    href: "/docs/travel-consent.html",
+  },
+  {
+    id: "doc-3",
+    title: "Booster calendar",
+    kind: "Calendar",
+    href: "/docs/booster-calendar.html",
+  },
 ];
 
 export const DEMO_SCRIPT = [

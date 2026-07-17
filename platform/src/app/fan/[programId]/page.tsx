@@ -24,11 +24,27 @@ function FanPublic() {
   const next = games.find((g) => !g.result) ?? games[games.length - 1];
   const standings = contentForSport(program.sport).standings;
   const record = contentForSport(program.sport).recordLabel;
+  const publicNews = snap.announcements.filter(
+    (a) => a.programId === program.id && a.audience === "public",
+  );
+  const newsCards =
+    publicNews.length > 0
+      ? publicNews.map((a) => ({
+          id: a.id,
+          tag: "Update",
+          title: a.title,
+          blurb: a.body,
+        }))
+      : FAN_NEWS;
 
   return (
     <div className="min-h-full bg-[var(--cc-field)]">
       <div className="border-b border-[var(--cc-line)] bg-white px-4 py-2 text-center text-xs text-[var(--cc-steel)]">
         Public Fan site ·{" "}
+        <Link href="/parent" className="font-semibold text-[var(--cc-blue)]">
+          Parent
+        </Link>
+        {" · "}
         <Link href="/app" className="font-semibold text-[var(--cc-blue)]">
           Staff app
         </Link>
@@ -49,7 +65,7 @@ function FanPublic() {
                 <div className="flex flex-wrap items-center gap-4">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src="/cypress-creek-logo.png"
+                    src={snap.brandLogoUrl || "/cypress-creek-logo.png"}
                     alt=""
                     className="h-20 w-20 rounded-2xl bg-white/10 object-contain p-1.5"
                   />
@@ -89,7 +105,7 @@ function FanPublic() {
 
           <div className="border-b border-[var(--cc-line)] bg-[var(--cc-field)]/80 px-6 py-4">
             <div className="fan-news-strip flex gap-3 overflow-x-auto">
-              {FAN_NEWS.map((n) => (
+              {newsCards.map((n) => (
                 <article
                   key={n.id}
                   className="min-w-[220px] shrink-0 rounded-xl border border-[var(--cc-line)] bg-white p-3"

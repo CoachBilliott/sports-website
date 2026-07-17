@@ -112,4 +112,9 @@ export interface PlatformRepository {
   signOut(): void;
   exportProgramJson(programId: string): string;
   resetToSeed(): void;
+  rollSeason(programId: string, nextSeasonLabel: string): void;
+  updateDistrict(patch: { name?: string }): void;
+  setBrandLogoUrl(url: string | null): void;
+  removeGame(id: string): void;
+  updateMember(id: string, patch: Partial<import("./types").Member>): void;
 }

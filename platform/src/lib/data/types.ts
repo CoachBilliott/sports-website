@@ -277,4 +277,6 @@ export type PlatformSnapshot = {
   activeCampusId: string;
   ssoConnected: boolean;
   team: TeamWorkspace;
+  brandLogoUrl: string | null;
+  parentDocs: { id: string; title: string; href: string }[];
 };

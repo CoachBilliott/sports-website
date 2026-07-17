@@ -15,6 +15,7 @@ export default function RosterPage() {
     campusPrograms,
     programOnCampus,
     addAthlete,
+    updateAthlete,
     removeAthlete,
     setDirectoryOptOut,
     setActiveProgram,
@@ -85,11 +86,59 @@ export default function RosterPage() {
             <tbody>
               {activeAthletes.map((a) => (
                 <tr key={a.id} className="border-b border-[var(--cc-line)]/60">
-                  <td className="py-2 font-semibold">{a.jersey}</td>
-                  <td className="py-2">{a.name}</td>
-                  <td className="py-2">{a.pos}</td>
-                  <td className="py-2">{a.classYear}</td>
-                  <td className="py-2">{a.level}</td>
+                  <td className="py-2">
+                    <input
+                      value={a.jersey}
+                      onChange={(e) =>
+                        updateAthlete(a.id, { jersey: e.target.value })
+                      }
+                      className="w-12 rounded border border-[var(--cc-line)] px-1 py-0.5 font-semibold"
+                    />
+                  </td>
+                  <td className="py-2">
+                    <input
+                      value={a.name}
+                      onChange={(e) =>
+                        updateAthlete(a.id, { name: e.target.value })
+                      }
+                      className="w-full min-w-[8rem] rounded border border-[var(--cc-line)] px-1 py-0.5"
+                    />
+                  </td>
+                  <td className="py-2">
+                    <input
+                      value={a.pos}
+                      onChange={(e) =>
+                        updateAthlete(a.id, { pos: e.target.value })
+                      }
+                      className="w-14 rounded border border-[var(--cc-line)] px-1 py-0.5"
+                    />
+                  </td>
+                  <td className="py-2">
+                    <select
+                      value={a.classYear}
+                      onChange={(e) =>
+                        updateAthlete(a.id, { classYear: e.target.value })
+                      }
+                      className="rounded border border-[var(--cc-line)] px-1 py-0.5"
+                    >
+                      {["Fr", "So", "Jr", "Sr"].map((y) => (
+                        <option key={y}>{y}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="py-2">
+                    <select
+                      value={a.level}
+                      onChange={(e) =>
+                        updateAthlete(a.id, { level: e.target.value })
+                      }
+                      className="rounded border border-[var(--cc-line)] px-1 py-0.5"
+                    >
+                      {activeProgram.levels.map((lv) => (
+                        <option key={lv}>{lv}</option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="py-2">
                     <button
                       type="button"

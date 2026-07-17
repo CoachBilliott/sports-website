@@ -177,6 +177,7 @@ const BY_MAX_RANK: { maxRank: number; perms: Permission[] }[] = [
     perms: [
       "view_district",
       "manage_own_campus",
+      "manage_members",
       "invite_below_self",
       "view_programs",
       "manage_programs",

@@ -16,6 +16,7 @@ export default function SchedulePage() {
     programOnCampus,
     updateGame,
     addGame,
+    removeGame,
     can,
     setActiveWeek,
   } = useApp();
@@ -100,16 +101,42 @@ export default function SchedulePage() {
                       Work week {g.week}
                     </button>
                     {can("manage_schedule") ? (
-                      <input
-                        value={g.result ?? ""}
-                        placeholder="Result"
-                        onChange={(e) =>
-                          updateGame(g.id, {
-                            result: e.target.value || null,
-                          })
-                        }
-                        className="w-24 rounded-md border border-[var(--cc-line)] px-2 py-1 text-sm font-semibold"
-                      />
+                      <>
+                        <input
+                          value={g.opponent}
+                          onChange={(e) =>
+                            updateGame(g.id, { opponent: e.target.value })
+                          }
+                          className="w-32 rounded-md border border-[var(--cc-line)] px-2 py-1 text-sm"
+                        />
+                        <input
+                          value={g.date}
+                          onChange={(e) =>
+                            updateGame(g.id, { date: e.target.value })
+                          }
+                          className="w-24 rounded-md border border-[var(--cc-line)] px-2 py-1 text-sm"
+                        />
+                        <input
+                          value={g.result ?? ""}
+                          placeholder="Result"
+                          onChange={(e) =>
+                            updateGame(g.id, {
+                              result: e.target.value || null,
+                            })
+                          }
+                          className="w-24 rounded-md border border-[var(--cc-line)] px-2 py-1 text-sm font-semibold"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Remove vs ${g.opponent}?`))
+                              removeGame(g.id);
+                          }}
+                          className="text-xs font-semibold text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </>
                     ) : (
                       <span className="font-semibold">
                         {g.result ?? (isNext ? "Next" : "TBD")}
