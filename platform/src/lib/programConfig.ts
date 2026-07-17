@@ -310,35 +310,117 @@ export function seedAuditEvents(): AuditEvent[] {
   ];
 }
 
+/** Human labels for module chips in Teams preview */
+export const MODULE_LABELS: Record<ProgramModuleId, string> = {
+  depth: "Depth charts",
+  scout: "Scout",
+  playbook: "Playbook",
+  quizzes: "Quizzes",
+  callSheet: "Call sheet",
+  printMyga: "Print boards",
+  practice: "Practice",
+  stats: "Stats",
+  grades: "Grades",
+  resources: "Resources",
+  philosophy: "Philosophy",
+  install: "Install",
+  study: "Study",
+};
+
 /** Lightweight demo data for Fan / Parent previews */
 export const DEMO_SCHEDULE = [
   {
     week: 1,
     date: "Aug 28",
+    time: "7:00 PM",
     opponent: "Tomball Memorial",
-    homeAway: "Home",
-    result: null as string | null,
+    homeAway: "Home" as const,
+    result: "W 28-21" as string | null,
   },
   {
     week: 2,
     date: "Sep 4",
+    time: "7:00 PM",
     opponent: "Bridgeland",
-    homeAway: "Away",
+    homeAway: "Away" as const,
     result: null as string | null,
   },
   {
     week: 3,
     date: "Sep 11",
+    time: "7:00 PM",
     opponent: "Cy Ranch",
-    homeAway: "Home",
-    result: "W 28-21",
+    homeAway: "Home" as const,
+    result: null as string | null,
+  },
+  {
+    week: 4,
+    date: "Sep 18",
+    time: "7:00 PM",
+    opponent: "Cy Woods",
+    homeAway: "Home" as const,
+    result: null as string | null,
   },
 ];
 
 export const DEMO_ROSTER = [
   { jersey: "7", name: "Alex Reyes", pos: "QB", classYear: "Sr" },
   { jersey: "11", name: "Tyler Brooks", pos: "WR", classYear: "Sr" },
-  { jersey: "2", name: "Jordan Hill", pos: "WR", classYear: "Sr" },
+  { jersey: "2", name: "Jordan Hill", pos: "WR", classYear: "Jr" },
   { jersey: "88", name: "Cameron Dunn", pos: "TE", classYear: "Sr" },
-  { jersey: "72", name: "Blake Moss", pos: "OL", classYear: "Sr" },
+  { jersey: "72", name: "Blake Moss", pos: "OL", classYear: "Jr" },
+];
+
+export const DEMO_FAN_NEWS = [
+  {
+    id: "news-1",
+    tag: "Game day",
+    title: "Cougars open district play Friday",
+    blurb: "Kickoff 7:00 PM at Cougar Stadium. Student section gates open at 5:30.",
+  },
+  {
+    id: "news-2",
+    tag: "Community",
+    title: "Booster club cookout Saturday",
+    blurb: "Families welcome after morning walkthrough — parking lot B.",
+  },
+  {
+    id: "news-3",
+    tag: "Media",
+    title: "Media day photos posted",
+    blurb: "Directory headshots are live on the public roster below.",
+  },
+];
+
+export const DEMO_ANNOUNCEMENTS = [
+  {
+    id: "ann-1",
+    date: "Mon",
+    title: "Booster meeting Thursday 6pm",
+    body: "Library conference room. Agenda: travel meals and senior night.",
+  },
+  {
+    id: "ann-2",
+    date: "Wed",
+    title: "Media day Friday after school",
+    body: "Athletes wear game jerseys. Pickup by 5:30pm at the field house.",
+  },
+  {
+    id: "ann-3",
+    date: "Fri",
+    title: "Bus leaves 4:45 for Bridgeland",
+    body: "Parents: arrival ~9:30pm. Check the app for delays.",
+  },
+];
+
+/** Items ADs typically need before a Cy-Fair pilot conversation */
+export const CYFAIR_PILOT_KEYS: LegalChecklistKey[] = [
+  "entityFormed",
+  "dpaTemplate",
+  "ferpaNotice",
+  "ssoReady",
+  "encryption",
+  "auditLogging",
+  "exportDelete",
+  "subprocessors",
 ];

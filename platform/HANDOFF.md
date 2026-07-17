@@ -150,12 +150,12 @@ Log: add/switch program, legal toggles, SSO, export, delete
 
 ## Success criteria
 
-- [ ] All Platform nav pages usable in a 5-minute AD demo
-- [ ] Add Volleyball → template shows single **Team** unit (not O/D/ST)
-- [ ] Switch active program updates Fan/Parent titles
-- [ ] Fan/Parent look presentable (no mock-shame footer)
-- [ ] Football app at `:3000` unchanged
-- [ ] `cd platform && npx tsc --noEmit` clean
+- [x] All Platform nav pages usable in a 5-minute AD demo
+- [x] Add Volleyball → template shows single **Team** unit (not O/D/ST)
+- [x] Switch active program updates Fan/Parent titles
+- [x] Fan/Parent look presentable (no mock-shame footer)
+- [x] Football app at `:3000` unchanged
+- [x] `cd platform && npx tsc --noEmit` clean (verify on each agent run)
 
 ---
 
