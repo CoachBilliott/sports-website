@@ -9,6 +9,7 @@ import type {
   SafetyKey,
 } from "./types";
 import { CYFAIR_CAMPUSES } from "./org";
+import { buildTeamWorkspace } from "./teamSeed";
 import {
   FOOTBALL_ROSTER,
   FOOTBALL_SCHEDULE,
@@ -255,6 +256,11 @@ export function createSeedSnapshot(): PlatformSnapshot {
     ...coaches,
   ];
 
+  const athletes = [
+    ...athletesFrom(fb.id, FOOTBALL_ROSTER),
+    ...athletesFrom(vb.id, VOLLEYBALL_ROSTER),
+  ];
+
   const now = Date.now();
   const audit: AuditEvent[] = [
     {
@@ -285,10 +291,7 @@ export function createSeedSnapshot(): PlatformSnapshot {
     campuses,
     programs: [fb, vb],
     members,
-    athletes: [
-      ...athletesFrom(fb.id, FOOTBALL_ROSTER),
-      ...athletesFrom(vb.id, VOLLEYBALL_ROSTER),
-    ],
+    athletes,
     games: [
       ...gamesFrom(fb.id, FOOTBALL_SCHEDULE),
       ...gamesFrom(vb.id, VOLLEYBALL_SCHEDULE),
@@ -325,5 +328,6 @@ export function createSeedSnapshot(): PlatformSnapshot {
     activeProgramId: fb.id,
     activeCampusId: cyCreek.id,
     ssoConnected: false,
+    team: buildTeamWorkspace(fb.id, vb.id, athletes),
   };
 }

@@ -164,6 +164,102 @@ export type SafetyKey =
   | "logExportsAndDeletes"
   | "noPhiStorage";
 
+/** Head-coach team workspace (per program). */
+export type DepthSlot = {
+  id: string;
+  programId: string;
+  unitId: string;
+  level: string;
+  position: string;
+  depth: number;
+  athleteId: string | null;
+};
+
+export type WeekNote = {
+  id: string;
+  programId: string;
+  unitId: string;
+  week: number;
+  kind: "scout" | "practice" | "callSheet" | "stats";
+  day?: string;
+  title: string;
+  body: string;
+};
+
+export type PlaybookEntry = {
+  id: string;
+  programId: string;
+  unitId: string;
+  title: string;
+  category: string;
+  body: string;
+};
+
+export type QuizItem = {
+  id: string;
+  programId: string;
+  unitId: string;
+  week: number;
+  title: string;
+  questions: { prompt: string; answer: string }[];
+  scores: { athleteId: string; score: number }[];
+};
+
+export type PlayerGrade = {
+  id: string;
+  programId: string;
+  athleteId: string;
+  week: number;
+  practice: number | null;
+  game: number | null;
+  pride: string | null;
+  notes: string;
+};
+
+export type AttendanceRecord = {
+  athleteId: string;
+  status: "present" | "absent" | "late" | "excused";
+};
+
+export type AttendanceDay = {
+  id: string;
+  programId: string;
+  date: string;
+  records: AttendanceRecord[];
+};
+
+export type ResourceItem = {
+  id: string;
+  programId: string;
+  unitId: string;
+  name: string;
+  category: string;
+  note: string;
+};
+
+export type StaffDuty = {
+  id: string;
+  programId: string;
+  title: string;
+  assigneeName: string;
+  status: "open" | "done";
+};
+
+export type TeamWorkspace = {
+  activeWeekByProgram: Record<string, number>;
+  activeUnitByProgram: Record<string, string>;
+  depthSlots: DepthSlot[];
+  weekNotes: WeekNote[];
+  playbook: PlaybookEntry[];
+  quizzes: QuizItem[];
+  grades: PlayerGrade[];
+  attendance: AttendanceDay[];
+  resources: ResourceItem[];
+  duties: StaffDuty[];
+  philosophy: Record<string, string>;
+  install: Record<string, string>;
+};
+
 export type PlatformSnapshot = {
   district: District;
   campuses: Campus[];
@@ -180,4 +276,5 @@ export type PlatformSnapshot = {
   activeProgramId: string;
   activeCampusId: string;
   ssoConnected: boolean;
+  team: TeamWorkspace;
 };

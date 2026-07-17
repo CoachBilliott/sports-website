@@ -5,12 +5,21 @@
 
 import type {
   Athlete,
+  AttendanceDay,
+  DepthSlot,
+  Game,
   LegalItemKey,
   PlatformSnapshot,
+  PlaybookEntry,
+  PlayerGrade,
   Program,
+  QuizItem,
+  ResourceItem,
   SafetyKey,
   SessionUser,
   SportId,
+  StaffDuty,
+  WeekNote,
 } from "./types";
 
 export type CreateProgramInput = {
@@ -70,6 +79,30 @@ export interface PlatformRepository {
   updateAthlete(id: string, patch: Partial<Athlete>): void;
   removeAthlete(id: string): void;
   addAnnouncement(input: CreateAnnouncementInput): void;
+  /** Head-coach team workspace */
+  setActiveWeek(programId: string, week: number): void;
+  setActiveUnit(programId: string, unitId: string): void;
+  updateDepthSlot(id: string, patch: Partial<DepthSlot>): void;
+  swapDepthAthletes(aId: string, bId: string): void;
+  upsertWeekNote(note: Omit<WeekNote, "id"> & { id?: string }): void;
+  addPlaybookEntry(entry: Omit<PlaybookEntry, "id">): void;
+  updatePlaybookEntry(id: string, patch: Partial<PlaybookEntry>): void;
+  removePlaybookEntry(id: string): void;
+  upsertQuiz(quiz: Omit<QuizItem, "id"> & { id?: string }): void;
+  setQuizScore(quizId: string, athleteId: string, score: number): void;
+  upsertGrade(grade: Omit<PlayerGrade, "id"> & { id?: string }): void;
+  setAttendance(
+    programId: string,
+    date: string,
+    records: AttendanceDay["records"],
+  ): void;
+  addResource(item: Omit<ResourceItem, "id">): void;
+  removeResource(id: string): void;
+  upsertDuty(duty: Omit<StaffDuty, "id"> & { id?: string }): void;
+  setPhilosophy(programId: string, unitId: string, text: string): void;
+  setInstall(programId: string, unitId: string, text: string): void;
+  updateGame(id: string, patch: Partial<Game>): void;
+  addGame(game: Omit<Game, "id">): void;
   log(action: string, detail: string, actor?: string): void;
   setOnboardingStep(step: number): void;
   completeOnboarding(): void;

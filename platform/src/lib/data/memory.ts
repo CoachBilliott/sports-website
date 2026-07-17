@@ -10,11 +10,20 @@ import type {
 } from "./repository";
 import type {
   Athlete,
+  AttendanceDay,
+  DepthSlot,
+  Game,
   LegalItemKey,
   PlatformSnapshot,
+  PlaybookEntry,
+  PlayerGrade,
   Program,
+  QuizItem,
+  ResourceItem,
   SafetyKey,
   SessionUser,
+  StaffDuty,
+  WeekNote,
 } from "./types";
 
 function slugify(name: string) {
@@ -244,6 +253,170 @@ export class MemoryRepository implements PlatformRepository {
       ...this.state.announcements,
     ];
     this.log("announcement.create", input.title);
+  }
+
+  setActiveWeek(programId: string, week: number) {
+    this.state.team.activeWeekByProgram = {
+      ...this.state.team.activeWeekByProgram,
+      [programId]: week,
+    };
+  }
+
+  setActiveUnit(programId: string, unitId: string) {
+    this.state.team.activeUnitByProgram = {
+      ...this.state.team.activeUnitByProgram,
+      [programId]: unitId,
+    };
+  }
+
+  updateDepthSlot(id: string, patch: Partial<DepthSlot>) {
+    this.state.team.depthSlots = this.state.team.depthSlots.map((s) =>
+      s.id === id ? { ...s, ...patch, id: s.id } : s,
+    );
+    this.log("depth.update", `Updated depth slot ${id}`);
+  }
+
+  swapDepthAthletes(aId: string, bId: string) {
+    const a = this.state.team.depthSlots.find((s) => s.id === aId);
+    const b = this.state.team.depthSlots.find((s) => s.id === bId);
+    if (!a || !b) return;
+    const aAth = a.athleteId;
+    this.state.team.depthSlots = this.state.team.depthSlots.map((s) => {
+      if (s.id === aId) return { ...s, athleteId: b.athleteId };
+      if (s.id === bId) return { ...s, athleteId: aAth };
+      return s;
+    });
+    this.log("depth.swap", "Swapped depth chart athletes");
+  }
+
+  upsertWeekNote(note: Omit<WeekNote, "id"> & { id?: string }) {
+    const id = note.id ?? `wn-${Date.now()}`;
+    const next = { ...note, id };
+    const exists = this.state.team.weekNotes.some((n) => n.id === id);
+    this.state.team.weekNotes = exists
+      ? this.state.team.weekNotes.map((n) => (n.id === id ? next : n))
+      : [next, ...this.state.team.weekNotes];
+    this.log("weekNote.upsert", next.title);
+  }
+
+  addPlaybookEntry(entry: Omit<PlaybookEntry, "id">) {
+    const item = { ...entry, id: `pb-${Date.now()}` };
+    this.state.team.playbook = [item, ...this.state.team.playbook];
+    this.log("playbook.add", item.title);
+  }
+
+  updatePlaybookEntry(id: string, patch: Partial<PlaybookEntry>) {
+    this.state.team.playbook = this.state.team.playbook.map((p) =>
+      p.id === id ? { ...p, ...patch, id: p.id } : p,
+    );
+  }
+
+  removePlaybookEntry(id: string) {
+    this.state.team.playbook = this.state.team.playbook.filter((p) => p.id !== id);
+    this.log("playbook.remove", id);
+  }
+
+  upsertQuiz(quiz: Omit<QuizItem, "id"> & { id?: string }) {
+    const id = quiz.id ?? `qz-${Date.now()}`;
+    const next = { ...quiz, id, scores: quiz.scores ?? [] };
+    const exists = this.state.team.quizzes.some((q) => q.id === id);
+    this.state.team.quizzes = exists
+      ? this.state.team.quizzes.map((q) => (q.id === id ? next : q))
+      : [next, ...this.state.team.quizzes];
+    this.log("quiz.upsert", next.title);
+  }
+
+  setQuizScore(quizId: string, athleteId: string, score: number) {
+    this.state.team.quizzes = this.state.team.quizzes.map((q) => {
+      if (q.id !== quizId) return q;
+      const scores = q.scores.filter((s) => s.athleteId !== athleteId);
+      scores.push({ athleteId, score });
+      return { ...q, scores };
+    });
+  }
+
+  upsertGrade(grade: Omit<PlayerGrade, "id"> & { id?: string }) {
+    const existing = this.state.team.grades.find(
+      (g) =>
+        g.athleteId === grade.athleteId &&
+        g.week === grade.week &&
+        g.programId === grade.programId,
+    );
+    const id = grade.id ?? existing?.id ?? `gr-${Date.now()}`;
+    const next = { ...grade, id };
+    this.state.team.grades = existing
+      ? this.state.team.grades.map((g) => (g.id === existing.id ? next : g))
+      : [...this.state.team.grades, next];
+    this.log("grade.upsert", `Week ${grade.week} grade`);
+  }
+
+  setAttendance(
+    programId: string,
+    date: string,
+    records: AttendanceDay["records"],
+  ) {
+    const existing = this.state.team.attendance.find(
+      (a) => a.programId === programId && a.date === date,
+    );
+    if (existing) {
+      this.state.team.attendance = this.state.team.attendance.map((a) =>
+        a.id === existing.id ? { ...a, records } : a,
+      );
+    } else {
+      this.state.team.attendance = [
+        { id: `att-${Date.now()}`, programId, date, records },
+        ...this.state.team.attendance,
+      ];
+    }
+    this.log("attendance.set", `${date} · ${records.length} athletes`);
+  }
+
+  addResource(item: Omit<ResourceItem, "id">) {
+    const next = { ...item, id: `res-${Date.now()}` };
+    this.state.team.resources = [next, ...this.state.team.resources];
+    this.log("resource.add", next.name);
+  }
+
+  removeResource(id: string) {
+    this.state.team.resources = this.state.team.resources.filter((r) => r.id !== id);
+  }
+
+  upsertDuty(duty: Omit<StaffDuty, "id"> & { id?: string }) {
+    const id = duty.id ?? `duty-${Date.now()}`;
+    const next = { ...duty, id };
+    const exists = this.state.team.duties.some((d) => d.id === id);
+    this.state.team.duties = exists
+      ? this.state.team.duties.map((d) => (d.id === id ? next : d))
+      : [next, ...this.state.team.duties];
+  }
+
+  setPhilosophy(programId: string, unitId: string, text: string) {
+    this.state.team.philosophy = {
+      ...this.state.team.philosophy,
+      [`${programId}:${unitId}`]: text,
+    };
+    this.log("philosophy.update", unitId);
+  }
+
+  setInstall(programId: string, unitId: string, text: string) {
+    this.state.team.install = {
+      ...this.state.team.install,
+      [`${programId}:${unitId}`]: text,
+    };
+    this.log("install.update", unitId);
+  }
+
+  updateGame(id: string, patch: Partial<Game>) {
+    this.state.games = this.state.games.map((g) =>
+      g.id === id ? { ...g, ...patch, id: g.id } : g,
+    );
+    this.log("game.update", id);
+  }
+
+  addGame(game: Omit<Game, "id">) {
+    const next = { ...game, id: `game-${Date.now()}` };
+    this.state.games = [...this.state.games, next].sort((a, b) => a.week - b.week);
+    this.log("game.add", `${next.opponent} W${next.week}`);
   }
 
   private recalcCounts(programId: string) {

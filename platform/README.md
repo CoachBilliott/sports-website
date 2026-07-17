@@ -41,7 +41,8 @@ Seeded DAD: `alex.nguyen.dad@cyfair.isd.demo` (any password). Login also has one
 | `/app/district` | Org chart (chain of command) |
 | `/app/campuses` | 12 campuses + coordinators |
 | `/app/permissions` | Controls matrix by role |
-| `/app/teams` | Programs CRUD (campus-scoped) |
+| `/app/team` | Head coach desk (this week) |
+| `/app/team/*` | Depth, scout, practice, call sheet, playbook, quizzes, grades, stats, resources, attendance, staff |
 | `/app/teams/[id]` | Program detail |
 | `/app/roster` | Athletes |
 | `/app/roster/import` | CSV import |

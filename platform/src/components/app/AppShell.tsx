@@ -15,9 +15,10 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { href: "/app", label: "Home", exact: true },
+  { href: "/app/team", label: "Team", perm: "manage_team" },
   { href: "/app/district", label: "Org chart", perm: "view_district" },
   { href: "/app/campuses", label: "Campuses", perm: "view_district" },
-  { href: "/app/teams", label: "Teams", perm: "view_programs" },
+  { href: "/app/teams", label: "Programs", perm: "view_programs" },
   { href: "/app/roster", label: "Roster", perm: "manage_roster" },
   { href: "/app/schedule", label: "Schedule", perm: "manage_schedule" },
   { href: "/app/announcements", label: "Announce", perm: "manage_announcements" },

@@ -17,13 +17,22 @@ import type {
 } from "@/lib/data/repository";
 import type {
   Athlete,
+  AttendanceDay,
   Campus,
+  DepthSlot,
+  Game,
   LegalItemKey,
   Member,
   PlatformSnapshot,
+  PlaybookEntry,
+  PlayerGrade,
   Program,
+  QuizItem,
+  ResourceItem,
   Role,
   SafetyKey,
+  StaffDuty,
+  WeekNote,
 } from "@/lib/data/types";
 import {
   ROLE_LABEL,
@@ -41,12 +50,16 @@ type AppContextValue = {
   activeAthletes: Athlete[];
   activeGames: PlatformSnapshot["games"];
   campusPrograms: Program[];
-  /** True when the active team belongs to the working campus. */
   programOnCampus: boolean;
   role: Role | null;
   roleLabel: string;
   can: (perm: Permission) => boolean;
   invitableRoles: Role[];
+  /** Coach team workspace helpers */
+  activeWeek: number;
+  activeUnitId: string;
+  setActiveWeek: (week: number) => void;
+  setActiveUnit: (unitId: string) => void;
   setActiveProgram: (id: string) => void;
   setActiveCampus: (id: string) => void;
   createProgram: (input: CreateProgramInput) => void;
@@ -67,6 +80,26 @@ type AppContextValue = {
   updateAthlete: (id: string, patch: Partial<Athlete>) => void;
   removeAthlete: (id: string) => void;
   addAnnouncement: (input: CreateAnnouncementInput) => void;
+  updateDepthSlot: (id: string, patch: Partial<DepthSlot>) => void;
+  swapDepthAthletes: (aId: string, bId: string) => void;
+  upsertWeekNote: (note: Omit<WeekNote, "id"> & { id?: string }) => void;
+  addPlaybookEntry: (entry: Omit<PlaybookEntry, "id">) => void;
+  updatePlaybookEntry: (id: string, patch: Partial<PlaybookEntry>) => void;
+  removePlaybookEntry: (id: string) => void;
+  upsertQuiz: (quiz: Omit<QuizItem, "id"> & { id?: string }) => void;
+  setQuizScore: (quizId: string, athleteId: string, score: number) => void;
+  upsertGrade: (grade: Omit<PlayerGrade, "id"> & { id?: string }) => void;
+  setAttendance: (
+    date: string,
+    records: AttendanceDay["records"],
+  ) => void;
+  addResource: (item: Omit<ResourceItem, "id">) => void;
+  removeResource: (id: string) => void;
+  upsertDuty: (duty: Omit<StaffDuty, "id"> & { id?: string }) => void;
+  setPhilosophy: (text: string) => void;
+  setInstall: (text: string) => void;
+  updateGame: (id: string, patch: Partial<Game>) => void;
+  addGame: (game: Omit<Game, "id">) => void;
   setOnboardingStep: (step: number) => void;
   completeOnboarding: () => void;
   updateOnboarding: (patch: Partial<PlatformSnapshot["onboarding"]>) => void;
@@ -86,9 +119,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const r = getMemoryRepository();
     const snap0 = r.getSnapshot() as PlatformSnapshot & {
       members: { role: string }[];
+      team?: PlatformSnapshot["team"];
     };
     const needsMigrate =
       !snap0.activeCampusId ||
+      !snap0.team?.depthSlots ||
       snap0.members.some(
         (m) =>
           (m.role as string) === "district_admin" ||
@@ -121,6 +156,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ? snap.games.filter((g) => g.programId === activeProgram.id)
     : [];
   const role = snap.session?.role ?? null;
+  const templateForActive = configForSport(activeProgram.sport);
+  const activeWeek =
+    snap.team.activeWeekByProgram[activeProgram.id] ??
+    activeGames.find((g) => !g.result)?.week ??
+    1;
+  const activeUnitId =
+    snap.team.activeUnitByProgram[activeProgram.id] ??
+    templateForActive.units[0]?.id ??
+    "team";
 
   const value: AppContextValue = {
     snap,
@@ -134,6 +178,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     roleLabel: role ? ROLE_LABEL[role] : "Signed out",
     can: (perm) => can(role, perm),
     invitableRoles: role ? invitableRoles(role) : [],
+    activeWeek,
+    activeUnitId,
+    setActiveWeek: (week) =>
+      run(() => repo.setActiveWeek(activeProgram.id, week)),
+    setActiveUnit: (unitId) =>
+      run(() => repo.setActiveUnit(activeProgram.id, unitId)),
     setActiveProgram: (id) => run(() => repo.setActiveProgram(id)),
     setActiveCampus: (id) => run(() => repo.setActiveCampus(id)),
     createProgram: (input) => run(() => repo.createProgram(input)),
@@ -151,6 +201,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateAthlete: (id, patch) => run(() => repo.updateAthlete(id, patch)),
     removeAthlete: (id) => run(() => repo.removeAthlete(id)),
     addAnnouncement: (input) => run(() => repo.addAnnouncement(input)),
+    updateDepthSlot: (id, patch) => run(() => repo.updateDepthSlot(id, patch)),
+    swapDepthAthletes: (a, b) => run(() => repo.swapDepthAthletes(a, b)),
+    upsertWeekNote: (note) => run(() => repo.upsertWeekNote(note)),
+    addPlaybookEntry: (e) => run(() => repo.addPlaybookEntry(e)),
+    updatePlaybookEntry: (id, patch) =>
+      run(() => repo.updatePlaybookEntry(id, patch)),
+    removePlaybookEntry: (id) => run(() => repo.removePlaybookEntry(id)),
+    upsertQuiz: (q) => run(() => repo.upsertQuiz(q)),
+    setQuizScore: (qid, aid, score) =>
+      run(() => repo.setQuizScore(qid, aid, score)),
+    upsertGrade: (g) => run(() => repo.upsertGrade(g)),
+    setAttendance: (date, records) =>
+      run(() => repo.setAttendance(activeProgram.id, date, records)),
+    addResource: (item) => run(() => repo.addResource(item)),
+    removeResource: (id) => run(() => repo.removeResource(id)),
+    upsertDuty: (d) => run(() => repo.upsertDuty(d)),
+    setPhilosophy: (text) =>
+      run(() => repo.setPhilosophy(activeProgram.id, activeUnitId, text)),
+    setInstall: (text) =>
+      run(() => repo.setInstall(activeProgram.id, activeUnitId, text)),
+    updateGame: (id, patch) => run(() => repo.updateGame(id, patch)),
+    addGame: (game) => run(() => repo.addGame(game)),
     setOnboardingStep: (step) => run(() => repo.setOnboardingStep(step)),
     completeOnboarding: () => run(() => repo.completeOnboarding()),
     updateOnboarding: (patch) => run(() => repo.updateOnboarding(patch)),
@@ -169,7 +241,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         URL.revokeObjectURL(url);
       }),
     resetToSeed: () => run(() => repo.resetToSeed()),
-    templateForActive: configForSport(activeProgram.sport),
+    templateForActive,
     membersByRole: (r) => snap.members.filter((m) => m.role === r),
   };
 

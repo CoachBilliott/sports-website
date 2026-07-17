@@ -73,6 +73,7 @@ export type Permission =
   | "manage_programs"
   | "manage_roster"
   | "manage_schedule"
+  | "manage_team"
   | "manage_announcements"
   | "season_roll"
   | "export_delete"
@@ -94,6 +95,7 @@ const ALL: Permission[] = [
   "manage_programs",
   "manage_roster",
   "manage_schedule",
+  "manage_team",
   "manage_announcements",
   "season_roll",
   "export_delete",
@@ -124,6 +126,7 @@ const BY_MAX_RANK: { maxRank: number; perms: Permission[] }[] = [
       "manage_programs",
       "manage_roster",
       "manage_schedule",
+      "manage_team",
       "manage_announcements",
       "season_roll",
       "export_delete",
@@ -144,6 +147,7 @@ const BY_MAX_RANK: { maxRank: number; perms: Permission[] }[] = [
       "manage_programs",
       "manage_roster",
       "manage_schedule",
+      "manage_team",
       "manage_announcements",
       "season_roll",
       "view_audit",
@@ -162,6 +166,7 @@ const BY_MAX_RANK: { maxRank: number; perms: Permission[] }[] = [
       "manage_programs",
       "manage_roster",
       "manage_schedule",
+      "manage_team",
       "manage_announcements",
       "season_roll",
       "view_fan_parent",
@@ -177,6 +182,7 @@ const BY_MAX_RANK: { maxRank: number; perms: Permission[] }[] = [
       "manage_programs",
       "manage_roster",
       "manage_schedule",
+      "manage_team",
       "manage_announcements",
       "view_fan_parent",
     ],
@@ -187,6 +193,7 @@ const BY_MAX_RANK: { maxRank: number; perms: Permission[] }[] = [
       "view_programs",
       "manage_roster",
       "manage_schedule",
+      "manage_team",
       "manage_announcements",
       "view_fan_parent",
     ],
@@ -197,6 +204,7 @@ const BY_MAX_RANK: { maxRank: number; perms: Permission[] }[] = [
       "view_programs",
       "manage_roster",
       "manage_schedule",
+      "manage_team",
       "view_fan_parent",
     ],
   },
@@ -264,6 +272,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   manage_programs: "Create / edit teams",
   manage_roster: "Edit roster",
   manage_schedule: "Edit schedule",
+  manage_team: "Coach team workspace",
   manage_announcements: "Post announcements",
   season_roll: "Season roll",
   export_delete: "Export / offboard data",

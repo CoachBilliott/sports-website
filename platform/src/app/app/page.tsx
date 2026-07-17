@@ -39,7 +39,11 @@ export default function DashboardPage() {
         title={`Welcome, ${snap.session?.name?.split(" ")[0] ?? "there"}`}
         description={`You're signed in as ${roleLabel}. Working campus: ${activeCampus.short}. Everything below is linked and ready — backend can plug into the same screens later.`}
         action={
-          can("manage_programs") ? (
+          can("manage_team") ? (
+            <Link href="/app/team">
+              <PrimaryButton>Open team desk</PrimaryButton>
+            </Link>
+          ) : can("manage_programs") ? (
             <Link href="/app/teams">
               <PrimaryButton>Go to teams</PrimaryButton>
             </Link>
@@ -75,6 +79,11 @@ export default function DashboardPage() {
         <Panel title="Do this next" className="lg:col-span-2">
           <ol className="space-y-2">
             {[
+              can("manage_team") && {
+                href: "/app/team",
+                title: "Open your team desk",
+                detail: "This week, depth, scout, practice, grades, attendance.",
+              },
               can("view_district") && {
                 href: "/app/district",
                 title: "Review the org chart",
