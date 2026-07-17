@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/PageHeader";
+import { EmptyCampusCallout } from "@/components/app/EmptyCampusCallout";
 import { useApp } from "@/components/app/AppProvider";
 import { Badge, Panel, PrimaryButton } from "@/components/ui";
 import {
@@ -14,27 +15,34 @@ import {
 
 export default function TeamsPage() {
   const {
-    snap,
     activeProgram,
+    activeCampus,
+    campusPrograms,
     setActiveProgram,
     createProgram,
     deleteProgram,
+    can,
   } = useApp();
   const [name, setName] = useState("");
   const [sport, setSport] = useState<SportId>("basketball");
   const [season, setSeason] = useState("2026");
   const preview = configForSport(sport);
+  const list = campusPrograms;
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Teams"
-        description="Create and manage sport programs on this campus."
+        description={`Programs at ${activeCampus.short}. Switch campus in the header to work another school.`}
       />
+
+      {!list.length ? (
+        <EmptyCampusCallout context="Create Football, Volleyball, or any sport here." />
+      ) : null}
 
       <Panel title="Programs">
         <ul className="space-y-2">
-          {snap.programs.map((p) => {
+          {list.map((p) => {
             const cfg = configForSport(p.sport);
             const active = p.id === activeProgram.id;
             return (
@@ -56,8 +64,7 @@ export default function TeamsPage() {
                     </p>
                     <p className="mt-0.5 text-xs text-[var(--cc-steel)]">
                       Units: {cfg.units.map((u) => u.label).join(", ")} ·{" "}
-                      {p.athleteCount} athletes · levels{" "}
-                      {p.levels.join(", ")}
+                      {p.athleteCount} athletes · {p.levels.join(", ")}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {cfg.enabledModules.map((m) => (
@@ -94,7 +101,7 @@ export default function TeamsPage() {
                     >
                       Fan
                     </Link>
-                    {snap.programs.length > 1 ? (
+                    {can("manage_programs") && list.length > 1 ? (
                       <button
                         type="button"
                         onClick={() => {
@@ -110,69 +117,82 @@ export default function TeamsPage() {
               </li>
             );
           })}
+          {!list.length ? (
+            <li className="rounded-xl border border-dashed border-[var(--cc-line)] px-4 py-6 text-sm text-[var(--cc-steel)]">
+              No teams on this campus yet — create one below.
+            </li>
+          ) : null}
         </ul>
       </Panel>
 
-      <Panel title="Add program">
-        <form
-          className="flex flex-wrap items-end gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            createProgram({
-              name:
-                name ||
-                SPORT_OPTIONS.find((s) => s.id === sport)?.label ||
+      {can("manage_programs") ? (
+        <Panel title="Add program">
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              createProgram({
+                name:
+                  name ||
+                  SPORT_OPTIONS.find((s) => s.id === sport)?.label ||
+                  sport,
                 sport,
-              sport,
-              seasonLabel: season,
-              campusId: snap.session?.campusId ?? snap.campuses[0]!.id,
-              levels:
-                sport === "football"
-                  ? ["Varsity", "JV", "Freshman"]
-                  : ["Varsity", "JV"],
-            });
-            setName("");
-          }}
-        >
-          <label className="text-sm">
-            <span className="font-semibold">Name</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 block w-44 rounded-lg border border-[var(--cc-line)] px-3 py-2"
-              placeholder="e.g. Basketball"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="font-semibold">Sport</span>
-            <select
-              value={sport}
-              onChange={(e) => setSport(e.target.value as SportId)}
-              className="mt-1 block rounded-lg border border-[var(--cc-line)] px-3 py-2"
-            >
-              {SPORT_OPTIONS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="font-semibold">Season</span>
-            <input
-              value={season}
-              onChange={(e) => setSeason(e.target.value)}
-              className="mt-1 block w-24 rounded-lg border border-[var(--cc-line)] px-3 py-2"
-            />
-          </label>
-          <PrimaryButton type="submit">Create program</PrimaryButton>
-        </form>
-        <p className="mt-3 text-sm text-[var(--cc-steel)]">
-          Template: <strong>{preview.label}</strong> · units{" "}
-          {preview.units.map((u) => u.label).join(", ")} ·{" "}
-          {preview.enabledModules.length} modules
-        </p>
-      </Panel>
+                seasonLabel: season,
+                campusId: activeCampus.id,
+                levels:
+                  sport === "football"
+                    ? ["Varsity", "JV", "Freshman"]
+                    : ["Varsity", "JV"],
+              });
+              setName("");
+            }}
+          >
+            <label className="text-sm">
+              <span className="font-semibold">Name</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="mt-1 block w-44 rounded-lg border border-[var(--cc-line)] px-3 py-2"
+                placeholder="e.g. Basketball"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="font-semibold">Sport</span>
+              <select
+                value={sport}
+                onChange={(e) => setSport(e.target.value as SportId)}
+                className="mt-1 block rounded-lg border border-[var(--cc-line)] px-3 py-2"
+              >
+                {SPORT_OPTIONS.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="font-semibold">Season</span>
+              <input
+                value={season}
+                onChange={(e) => setSeason(e.target.value)}
+                className="mt-1 block w-24 rounded-lg border border-[var(--cc-line)] px-3 py-2"
+              />
+            </label>
+            <PrimaryButton type="submit">Create program</PrimaryButton>
+          </form>
+          <p className="mt-3 text-sm text-[var(--cc-steel)]">
+            Template: <strong>{preview.label}</strong> · units{" "}
+            {preview.units.map((u) => u.label).join(", ")} · campus{" "}
+            <strong>{activeCampus.short}</strong>
+          </p>
+        </Panel>
+      ) : (
+        <Panel title="Add program">
+          <p className="text-sm text-[var(--cc-steel)]">
+            Your role cannot create teams. Ask a Campus Coordinator or above.
+          </p>
+        </Panel>
+      )}
     </div>
   );
 }

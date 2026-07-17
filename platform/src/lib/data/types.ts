@@ -4,8 +4,11 @@
  */
 
 export type Role =
-  | "district_admin"
-  | "campus_ad"
+  | "district_athletic_director"
+  | "associate_athletic_director"
+  | "district_athletic_coordinator"
+  | "athletic_campus_coordinator"
+  | "assistant_athletic_campus_coordinator"
   | "head_coach"
   | "coach"
   | "parent"
@@ -46,6 +49,7 @@ export type Campus = {
   districtId: string;
   name: string;
   mascot: string;
+  short: string;
 };
 
 export type Program = {
@@ -66,9 +70,13 @@ export type Member = {
   name: string;
   email: string;
   role: Role;
+  /** Human-readable scope label */
   scope: string;
+  /** Campus assignment (required for campus coordinator roles) */
+  campusId?: string;
   programIds: string[];
   status: "active" | "invited" | "disabled";
+  reportsToId?: string;
 };
 
 export type Athlete = {
@@ -97,6 +105,7 @@ export type Game = {
 export type Announcement = {
   id: string;
   programId: string;
+  campusId?: string;
   dateLabel: string;
   title: string;
   body: string;
@@ -169,5 +178,6 @@ export type PlatformSnapshot = {
   onboarding: OnboardingState;
   session: SessionUser | null;
   activeProgramId: string;
+  activeCampusId: string;
   ssoConnected: boolean;
 };

@@ -8,6 +8,7 @@ import type {
   Program,
   SafetyKey,
 } from "./types";
+import { CYFAIR_CAMPUSES } from "./org";
 import {
   FOOTBALL_ROSTER,
   FOOTBALL_SCHEDULE,
@@ -78,22 +79,51 @@ function gamesFrom(
   }));
 }
 
+const FIRST = [
+  "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Avery", "Quinn",
+  "Sam", "Jamie", "Cameron", "Drew", "Reese", "Skyler", "Parker", "Blake",
+];
+const LAST = [
+  "Nguyen", "Patel", "Garcia", "Brooks", "Chen", "Rivera", "Walsh", "Torres",
+  "Kim", "Foster", "Hayes", "Price", "Coleman", "Bennett", "Reed", "Ortiz",
+];
+
+function person(i: number) {
+  return `${FIRST[i % FIRST.length]} ${LAST[i % LAST.length]}`;
+}
+
+function email(name: string, tag: string) {
+  return `${name.toLowerCase().replace(/\s+/g, ".")}.${tag}@cyfair.isd.demo`;
+}
+
 export function createSeedSnapshot(): PlatformSnapshot {
+  const districtId = "dist-cyfair";
+  const campuses = CYFAIR_CAMPUSES.map((c) => ({
+    id: c.id,
+    districtId,
+    name: c.name,
+    mascot: c.mascot,
+    short: c.short,
+  }));
+
+  const cyCreek = campuses[0]!;
+
   const fb: Program = {
     id: "prog-fb-2026",
-    campusId: "camp-cycreek",
+    campusId: cyCreek.id,
     name: "Football",
     sport: "football",
     seasonLabel: "2026",
     slug: "football",
     levels: ["Varsity", "JV", "Freshman"],
-    maxPrepsUrl: "https://www.maxpreps.com/tx/houston/cypress-creek-cougars/football/",
+    maxPrepsUrl:
+      "https://www.maxpreps.com/tx/houston/cypress-creek-cougars/football/",
     athleteCount: FOOTBALL_ROSTER.length,
     staffCount: 4,
   };
   const vb: Program = {
     id: "prog-vb-2026",
-    campusId: "camp-cycreek",
+    campusId: cyCreek.id,
     name: "Volleyball",
     sport: "volleyball",
     seasonLabel: "2026",
@@ -103,70 +133,126 @@ export function createSeedSnapshot(): PlatformSnapshot {
     staffCount: 2,
   };
 
-  const members: Member[] = [
+  const dads: Member[] = [0, 1].map((i) => ({
+    id: `dad-${i}`,
+    name: person(i),
+    email: email(person(i), "dad"),
+    role: "district_athletic_director" as const,
+    scope: "Cy-Fair ISD Athletics",
+    programIds: [],
+    status: "active" as const,
+  }));
+
+  const aads: Member[] = [2, 3, 4, 5].map((i, idx) => ({
+    id: `aad-${idx}`,
+    name: person(i),
+    email: email(person(i), "aad"),
+    role: "associate_athletic_director" as const,
+    scope: "Cy-Fair ISD Athletics",
+    programIds: [],
+    status: "active" as const,
+    reportsToId: dads[idx % 2]!.id,
+  }));
+
+  const dacs: Member[] = [6, 7].map((i, idx) => ({
+    id: `dac-${idx}`,
+    name: person(i),
+    email: email(person(i), "dac"),
+    role: "district_athletic_coordinator" as const,
+    scope: "Cy-Fair ISD Athletics",
+    programIds: [],
+    status: "active" as const,
+    reportsToId: aads[idx]!.id,
+  }));
+
+  const campusCoords: Member[] = campuses.map((c, idx) => ({
+    id: `acc-${c.id}`,
+    name: person(8 + idx),
+    email: email(person(8 + idx), "acc"),
+    role: "athletic_campus_coordinator" as const,
+    scope: c.short,
+    campusId: c.id,
+    programIds: c.id === cyCreek.id ? [fb.id, vb.id] : [],
+    status: "active" as const,
+    reportsToId: dacs[idx % 2]!.id,
+  }));
+
+  const asstCoords: Member[] = campuses.map((c, idx) => ({
+    id: `aacc-${c.id}`,
+    name: person(20 + idx),
+    email: email(person(20 + idx), "aacc"),
+    role: "assistant_athletic_campus_coordinator" as const,
+    scope: c.short,
+    campusId: c.id,
+    programIds: c.id === cyCreek.id ? [fb.id, vb.id] : [],
+    status: "active" as const,
+    reportsToId: `acc-${c.id}`,
+  }));
+
+  const coaches: Member[] = [
     {
-      id: "m1",
-      name: "Jordan Hale",
-      email: "jhale@cyfair.isd.demo",
-      role: "campus_ad",
-      scope: "Cypress Creek",
-      programIds: [fb.id, vb.id],
-      status: "active",
-    },
-    {
-      id: "m2",
+      id: "hc-fb",
       name: "Coach Billiott",
       email: "cbilliott@cyfair.isd.demo",
       role: "head_coach",
-      scope: "Football",
+      scope: "Cy Creek Football",
+      campusId: cyCreek.id,
       programIds: [fb.id],
       status: "active",
+      reportsToId: `acc-${cyCreek.id}`,
     },
     {
-      id: "m3",
+      id: "c-off",
       name: "Maria Santos",
       email: "msantos@cyfair.isd.demo",
       role: "coach",
       scope: "Football · Offense",
+      campusId: cyCreek.id,
       programIds: [fb.id],
       status: "active",
+      reportsToId: "hc-fb",
     },
     {
-      id: "m4",
+      id: "c-def",
       name: "Chris Nguyen",
       email: "cnguyen@cyfair.isd.demo",
       role: "coach",
       scope: "Football · Defense",
+      campusId: cyCreek.id,
       programIds: [fb.id],
       status: "active",
+      reportsToId: "hc-fb",
     },
     {
-      id: "m5",
+      id: "hc-vb",
       name: "Alicia Brooks",
       email: "abrooks@cyfair.isd.demo",
       role: "head_coach",
-      scope: "Volleyball",
+      scope: "Cy Creek Volleyball",
+      campusId: cyCreek.id,
       programIds: [vb.id],
       status: "active",
+      reportsToId: `acc-${cyCreek.id}`,
     },
     {
-      id: "m6",
-      name: "Sam Ortiz",
-      email: "sortiz@cyfair.isd.demo",
-      role: "district_admin",
-      scope: "Cy-Fair ISD",
-      programIds: [fb.id, vb.id],
-      status: "active",
-    },
-    {
-      id: "m7",
+      id: "parent-1",
       name: "Parent Demo",
       email: "parent@demo.local",
       role: "parent",
       scope: "Linked athletes",
+      campusId: cyCreek.id,
       programIds: [fb.id],
       status: "invited",
     },
+  ];
+
+  const members: Member[] = [
+    ...dads,
+    ...aads,
+    ...dacs,
+    ...campusCoords,
+    ...asstCoords,
+    ...coaches,
   ];
 
   const now = Date.now();
@@ -174,48 +260,29 @@ export function createSeedSnapshot(): PlatformSnapshot {
     {
       id: "a1",
       at: new Date(now - 86400000 * 2).toISOString(),
-      actor: "Sam Ortiz",
-      action: "login",
-      detail: "Signed in as district admin",
+      actor: dads[0]!.name,
+      action: "auth.signin",
+      detail: "District Athletic Director signed in",
     },
     {
       id: "a2",
       at: new Date(now - 86400000).toISOString(),
-      actor: "Jordan Hale",
+      actor: campusCoords[0]!.name,
       action: "program.create",
-      detail: "Created Volleyball 2026",
+      detail: "Cy Creek · Volleyball 2026 ready",
     },
     {
       id: "a3",
       at: new Date(now - 3600000).toISOString(),
-      actor: "Sam Ortiz",
+      actor: aads[0]!.name,
       action: "safety.update",
-      detail: "Confirmed Fan directory minimization",
+      detail: "Confirmed Fan directory minimization district-wide",
     },
   ];
 
   return {
-    district: { id: "dist-cyfair", name: "Cy-Fair ISD" },
-    campuses: [
-      {
-        id: "camp-cycreek",
-        districtId: "dist-cyfair",
-        name: "Cypress Creek High School",
-        mascot: "Cougars",
-      },
-      {
-        id: "camp-cywoods",
-        districtId: "dist-cyfair",
-        name: "Cy Woods High School",
-        mascot: "Wildcats",
-      },
-      {
-        id: "camp-langham",
-        districtId: "dist-cyfair",
-        name: "Langham Creek High School",
-        mascot: "Lobos",
-      },
-    ],
+    district: { id: districtId, name: "Cy-Fair ISD" },
+    campuses,
     programs: [fb, vb],
     members,
     athletes: [
@@ -226,23 +293,15 @@ export function createSeedSnapshot(): PlatformSnapshot {
       ...gamesFrom(fb.id, FOOTBALL_SCHEDULE),
       ...gamesFrom(vb.id, VOLLEYBALL_SCHEDULE),
     ],
-    announcements: PARENT_ANNOUNCEMENTS.map((a, i) => ({
+    announcements: PARENT_ANNOUNCEMENTS.map((a) => ({
       id: a.id,
       programId: fb.id,
+      campusId: cyCreek.id,
       dateLabel: a.date,
       title: a.title,
       body: a.body,
       audience: "parent" as const,
-    })).concat(
-      PARENT_ANNOUNCEMENTS.slice(0, 2).map((a, i) => ({
-        id: `vb-${a.id}`,
-        programId: vb.id,
-        dateLabel: a.date,
-        title: a.title.replace("Bridgeland", "Langham Creek"),
-        body: a.body,
-        audience: "parent" as const,
-      })),
-    ),
+    })),
     audit,
     legal: legalDefaults(),
     safety: safetyDefaults(),
@@ -256,14 +315,15 @@ export function createSeedSnapshot(): PlatformSnapshot {
       maxPrepsUrl: fb.maxPrepsUrl ?? "",
     },
     session: {
-      id: "u-admin",
-      name: "Sam Ortiz",
-      email: "sortiz@cyfair.isd.demo",
-      role: "district_admin",
-      districtId: "dist-cyfair",
-      campusId: "camp-cycreek",
+      id: dads[0]!.id,
+      name: dads[0]!.name,
+      email: dads[0]!.email,
+      role: "district_athletic_director",
+      districtId,
+      campusId: cyCreek.id,
     },
     activeProgramId: fb.id,
+    activeCampusId: cyCreek.id,
     ssoConnected: false,
   };
 }

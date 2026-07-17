@@ -1,19 +1,42 @@
 "use client";
 
+import Link from "next/link";
 import { PageHeader } from "@/components/app/PageHeader";
+import { EmptyCampusCallout } from "@/components/app/EmptyCampusCallout";
 import { useApp } from "@/components/app/AppProvider";
 import { Panel } from "@/components/ui";
 import { logoForOpponent } from "@/lib/demoContent";
 
 export default function SchedulePage() {
-  const { activeProgram, activeGames } = useApp();
+  const { activeProgram, activeCampus, activeGames, programOnCampus } =
+    useApp();
   const next = activeGames.find((g) => !g.result);
+
+  if (!programOnCampus) {
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Schedule"
+          description={`Working campus: ${activeCampus.short}`}
+        />
+        <EmptyCampusCallout context="Schedule needs a team on this campus." />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Schedule"
-        description={`${activeProgram.name} · ${activeProgram.seasonLabel}. MaxPreps URL sync can plug into this list later.`}
+        description={`${activeProgram.name} · ${activeCampus.short} · ${activeProgram.seasonLabel}`}
+        action={
+          <Link
+            href={`/fan/${activeProgram.slug}`}
+            className="text-sm font-semibold text-[var(--cc-blue)]"
+          >
+            Preview Fan →
+          </Link>
+        }
       />
 
       <Panel title="Games">

@@ -18,7 +18,26 @@ export default function LegalPage() {
     setLegal,
     setSafety,
     setDirectoryOptOut,
+    can,
   } = useApp();
+
+  if (!can("manage_legal")) {
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Legal & safety"
+          description="Only District Athletic Directors and Associate ADs can change these controls."
+        />
+        <Panel title="No access">
+          <p className="text-sm text-[var(--cc-steel)]">
+            Ask a DAD or AAD, or use <strong>View as</strong> in the header to
+            preview their permissions.
+          </p>
+        </Panel>
+      </div>
+    );
+  }
+
   const done = LEGAL_CHECKLIST_ITEMS.filter((i) => snap.legal[i.key]).length;
   const safetyOn = SAFETY_TOGGLE_ITEMS.filter((i) => snap.safety[i.key]).length;
   const pilotLeft = CYFAIR_PILOT_KEYS.filter((k) => !snap.legal[k]);

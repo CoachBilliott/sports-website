@@ -2,6 +2,7 @@
 
 import { createSeedSnapshot } from "./seed";
 import type {
+  CreateAnnouncementInput,
   CreateProgramInput,
   ImportAthleteRow,
   InviteMemberInput,
@@ -53,7 +54,19 @@ export class MemoryRepository implements PlatformRepository {
     if (!this.state.programs.some((p) => p.id === id)) return;
     this.state.activeProgramId = id;
     const p = this.state.programs.find((x) => x.id === id);
+    if (p) this.state.activeCampusId = p.campusId;
     this.log("program.activate", `Active program → ${p?.name ?? id}`);
+  }
+
+  setActiveCampus(id: string) {
+    if (!this.state.campuses.some((c) => c.id === id)) return;
+    this.state.activeCampusId = id;
+    const onCampus = this.state.programs.filter((p) => p.campusId === id);
+    if (onCampus.length && !onCampus.some((p) => p.id === this.state.activeProgramId)) {
+      this.state.activeProgramId = onCampus[0]!.id;
+    }
+    const c = this.state.campuses.find((x) => x.id === id);
+    this.log("campus.activate", `Active campus → ${c?.short ?? id}`);
   }
 
   createProgram(input: CreateProgramInput): Program {
@@ -70,6 +83,7 @@ export class MemoryRepository implements PlatformRepository {
     };
     this.state.programs = [...this.state.programs, program];
     this.state.activeProgramId = program.id;
+    this.state.activeCampusId = input.campusId;
     this.log(
       "program.create",
       `Created ${program.name} · ${program.sport} · ${program.seasonLabel}`,
@@ -133,8 +147,10 @@ export class MemoryRepository implements PlatformRepository {
         email: input.email,
         role: input.role,
         scope: input.scope,
+        campusId: input.campusId,
         programIds: input.programIds,
         status: "invited",
+        reportsToId: input.reportsToId ?? this.state.session?.id,
       },
     ];
     this.log("member.invite", `Invited ${input.email} as ${input.role}`);
@@ -213,6 +229,23 @@ export class MemoryRepository implements PlatformRepository {
     this.log("roster.remove", `Removed athlete ${a?.name ?? id}`);
   }
 
+  addAnnouncement(input: CreateAnnouncementInput) {
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    this.state.announcements = [
+      {
+        id: `ann-${Date.now()}`,
+        programId: input.programId,
+        campusId: input.campusId,
+        dateLabel: input.dateLabel ?? days[new Date().getDay()]!,
+        title: input.title,
+        body: input.body,
+        audience: input.audience,
+      },
+      ...this.state.announcements,
+    ];
+    this.log("announcement.create", input.title);
+  }
+
   private recalcCounts(programId: string) {
     const count = this.state.athletes.filter((a) => a.programId === programId)
       .length;
@@ -245,18 +278,48 @@ export class MemoryRepository implements PlatformRepository {
           email: member.email,
           role: member.role,
           districtId: this.state.district.id,
-          campusId: this.state.campuses[0]!.id,
+          campusId: member.campusId ?? this.state.activeCampusId,
         }
       : {
           id: "u-guest",
           name: email.split("@")[0] || "User",
           email,
-          role: "campus_ad",
+          role: "athletic_campus_coordinator",
           districtId: this.state.district.id,
-          campusId: this.state.campuses[0]!.id,
+          campusId: this.state.activeCampusId,
         };
     this.state.session = session;
-    this.log("auth.signin", `Signed in ${session.email}`, session.name);
+    this.state.activeCampusId = session.campusId;
+    const onCampus = this.state.programs.filter(
+      (p) => p.campusId === session.campusId,
+    );
+    if (onCampus.length) this.state.activeProgramId = onCampus[0]!.id;
+    this.log("auth.signin", `Signed in as ${session.role}`, session.name);
+    return session;
+  }
+
+  switchToMember(memberId: string): SessionUser | null {
+    const member = this.state.members.find((m) => m.id === memberId);
+    if (!member) return null;
+    const session: SessionUser = {
+      id: member.id,
+      name: member.name,
+      email: member.email,
+      role: member.role,
+      districtId: this.state.district.id,
+      campusId: member.campusId ?? this.state.activeCampusId,
+    };
+    this.state.session = session;
+    this.state.activeCampusId = session.campusId;
+    const onCampus = this.state.programs.filter(
+      (p) => p.campusId === session.campusId,
+    );
+    if (onCampus.length) this.state.activeProgramId = onCampus[0]!.id;
+    this.log(
+      "auth.preview",
+      `Previewing as ${member.role} · ${member.name}`,
+      member.name,
+    );
     return session;
   }
 
@@ -281,7 +344,6 @@ export class MemoryRepository implements PlatformRepository {
 
   resetToSeed() {
     this.state = createSeedSnapshot();
-    this.log("system.reset", "Reset to seed snapshot", "System");
   }
 }
 
@@ -289,5 +351,11 @@ let singleton: MemoryRepository | null = null;
 
 export function getMemoryRepository() {
   if (!singleton) singleton = new MemoryRepository();
+  return singleton;
+}
+
+/** Force a fresh seed (e.g. after role model changes in dev). */
+export function resetMemoryRepository() {
+  singleton = new MemoryRepository();
   return singleton;
 }

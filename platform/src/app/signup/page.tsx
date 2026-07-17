@@ -29,7 +29,7 @@ function SignupForm() {
             inviteMember({
               name: name || "New admin",
               email: email || "admin@school.demo",
-              role: "district_admin",
+              role: "district_athletic_director",
               scope: district,
               programIds: [],
             });

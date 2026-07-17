@@ -3,18 +3,22 @@
 import { useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/PageHeader";
+import { EmptyCampusCallout } from "@/components/app/EmptyCampusCallout";
 import { useApp } from "@/components/app/AppProvider";
 import { Badge, Panel, PrimaryButton } from "@/components/ui";
 
 export default function RosterPage() {
   const {
     activeProgram,
+    activeCampus,
     activeAthletes,
+    campusPrograms,
+    programOnCampus,
     addAthlete,
     removeAthlete,
     setDirectoryOptOut,
     setActiveProgram,
-    snap,
+    can,
   } = useApp();
   const [form, setForm] = useState({
     name: "",
@@ -24,15 +28,29 @@ export default function RosterPage() {
     level: "Varsity",
   });
 
+  if (!programOnCampus) {
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Roster"
+          description={`Working campus: ${activeCampus.short}`}
+        />
+        <EmptyCampusCallout context="Roster needs a team on this campus." />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader
         title="Roster"
-        description={`${activeProgram.name} · ${activeAthletes.length} athletes`}
+        description={`${activeProgram.name} · ${activeCampus.short} · ${activeAthletes.length} athletes`}
         action={
-          <Link href="/app/roster/import">
-            <PrimaryButton>Import CSV</PrimaryButton>
-          </Link>
+          can("manage_roster") ? (
+            <Link href="/app/roster/import">
+              <PrimaryButton>Import CSV</PrimaryButton>
+            </Link>
+          ) : null
         }
       />
 
@@ -42,7 +60,7 @@ export default function RosterPage() {
           onChange={(e) => setActiveProgram(e.target.value)}
           className="rounded-lg border border-[var(--cc-line)] px-3 py-2 text-sm font-semibold"
         >
-          {snap.programs.map((p) => (
+          {campusPrograms.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>

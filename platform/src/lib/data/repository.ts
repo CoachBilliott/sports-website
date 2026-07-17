@@ -27,6 +27,8 @@ export type InviteMemberInput = {
   role: SessionUser["role"];
   scope: string;
   programIds: string[];
+  campusId?: string;
+  reportsToId?: string;
 };
 
 export type ImportAthleteRow = {
@@ -37,9 +39,19 @@ export type ImportAthleteRow = {
   level: string;
 };
 
+export type CreateAnnouncementInput = {
+  title: string;
+  body: string;
+  audience: "staff" | "parent" | "public";
+  programId: string;
+  campusId?: string;
+  dateLabel?: string;
+};
+
 export interface PlatformRepository {
   getSnapshot(): PlatformSnapshot;
   setActiveProgram(id: string): void;
+  setActiveCampus(id: string): void;
   createProgram(input: CreateProgramInput): Program;
   updateProgram(id: string, patch: Partial<Program>): void;
   deleteProgram(id: string): void;
@@ -57,11 +69,13 @@ export interface PlatformRepository {
   addAthlete(programId: string, row: ImportAthleteRow): void;
   updateAthlete(id: string, patch: Partial<Athlete>): void;
   removeAthlete(id: string): void;
+  addAnnouncement(input: CreateAnnouncementInput): void;
   log(action: string, detail: string, actor?: string): void;
   setOnboardingStep(step: number): void;
   completeOnboarding(): void;
   updateOnboarding(patch: Partial<PlatformSnapshot["onboarding"]>): void;
   signIn(email: string): SessionUser;
+  switchToMember(memberId: string): SessionUser | null;
   signOut(): void;
   exportProgramJson(programId: string): string;
   resetToSeed(): void;
