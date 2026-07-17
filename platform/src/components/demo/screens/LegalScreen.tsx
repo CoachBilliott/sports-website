@@ -17,7 +17,7 @@ import {
   Panel,
   ProgressBar,
   YesNo,
-} from "../ui";
+} from "@/components/ui";
 
 export function LegalScreen() {
   const {

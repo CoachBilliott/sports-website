@@ -7,7 +7,7 @@ import {
   contentForSport,
 } from "@/lib/demoContent";
 import { usePlatform } from "../PlatformState";
-import { Badge, GhostButton, Panel } from "../ui";
+import { Badge, GhostButton, Panel } from "@/components/ui";
 
 export function ParentScreen() {
   const { activeProgram, campus, safetyToggles, setPage, parentOptOuts } =

@@ -8,7 +8,7 @@ import {
 } from "@/lib/programConfig";
 import { DEMO_SCRIPT } from "@/lib/demoContent";
 import { usePlatform } from "../PlatformState";
-import { Badge, GhostButton, Panel, ProgressBar, PrimaryButton, StatTile } from "../ui";
+import { Badge, GhostButton, Panel, ProgressBar, PrimaryButton, StatTile } from "@/components/ui";
 
 export function OverviewScreen() {
   const {

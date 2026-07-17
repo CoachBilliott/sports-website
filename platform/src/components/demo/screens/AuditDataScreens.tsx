@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { usePlatform } from "../PlatformState";
-import { Badge, Panel, PrimaryButton } from "../ui";
+import { Badge, Panel, PrimaryButton } from "@/components/ui";
 
 export function AuditScreen() {
   const { auditEvents, logAudit } = usePlatform();

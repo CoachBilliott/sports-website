@@ -2,7 +2,7 @@
 
 import { FAN_NEWS, contentForSport, logoForOpponent } from "@/lib/demoContent";
 import { usePlatform } from "../PlatformState";
-import { Badge, GhostButton } from "../ui";
+import { Badge, GhostButton } from "@/components/ui";
 
 export function FanScreen() {
   const {

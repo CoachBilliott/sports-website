@@ -9,7 +9,7 @@ import {
 } from "@/lib/programConfig";
 import { contentForSport } from "@/lib/demoContent";
 import { usePlatform } from "../PlatformState";
-import { Badge, Panel, PrimaryButton } from "../ui";
+import { Badge, Panel, PrimaryButton } from "@/components/ui";
 
 function ModuleChips({
   modules,

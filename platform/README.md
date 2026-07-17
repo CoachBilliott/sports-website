@@ -1,8 +1,9 @@
 # Team OS Platform
 
-District / multi-sport / Fan / Parent / Legal & safety demo.
+Full product UI (staff app + Fan + Parent + auth/onboarding).  
+In-memory data layer — swap `MemoryRepository` for Supabase/API later.
 
-**Separate from** Cy Creek Football Team OS (`../` on port 3000).
+**Saved AD walkthrough:** `/demo` (git tag `platform-ad-walkthrough-v1`)
 
 ## Run
 
@@ -12,18 +13,33 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3001
+- App: http://localhost:3001/app  
+- Fan: http://localhost:3001/fan/football  
+- Parent: http://localhost:3001/parent  
+- Login: http://localhost:3001/login  
+- Onboarding: http://localhost:3001/onboarding  
+- AD walkthrough (saved): http://localhost:3001/demo  
 
-## AD demo path (~5 min)
+## App routes
 
-1. **Overview** — readiness score + live script  
-2. **District** — Cy-Fair → campuses → staff + SSO  
-3. **Add teams** — Football (full) vs Volleyball (Team unit); add Basketball  
-4. **Fan site** — public schedule, standings, directory roster · Present Fan  
-5. **Parent site** — child switcher, announcements, docs, eligibility  
-6. **Legal & safety** — field matrix, safety toggles, opt-outs, checklist  
-7. **Audit** / **Export / Delete** — log + portability + offboard certificate  
+| Path | Purpose |
+|------|---------|
+| `/app` | Dashboard |
+| `/app/district` | Tenancy + SSO |
+| `/app/teams` | Programs CRUD |
+| `/app/teams/[id]` | Program detail |
+| `/app/roster` | Athletes |
+| `/app/roster/import` | CSV import |
+| `/app/schedule` | Games |
+| `/app/members` | Staff invites |
+| `/app/seasons` | Season roll UI |
+| `/app/legal` | Legal & safety |
+| `/app/audit` | Audit log |
+| `/app/data` | Export / offboard |
+| `/app/settings` | Workspace settings |
 
-Header: switch **Active** program to flip Fan/Parent data between Football and Volleyball.
+## Backend later
 
-See `HANDOFF.md` for agent instructions.
+Implement `PlatformRepository` (`src/lib/data/repository.ts`) and replace `getMemoryRepository()` in `AppProvider`. Screens already call repository methods through `useApp()`.
+
+Football Team OS (repo root, port 3000) is unchanged.

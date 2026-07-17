@@ -2,7 +2,7 @@
 
 import { DEMO_CAMPUSES, DEMO_STAFF } from "@/lib/demoContent";
 import { usePlatform } from "../PlatformState";
-import { Badge, GhostButton, Panel, PrimaryButton, StatTile } from "../ui";
+import { Badge, GhostButton, Panel, PrimaryButton, StatTile } from "@/components/ui";
 
 export function DistrictScreen() {
   const {

@@ -1,7 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { PlatformShell } from "@/components/PlatformShell";
-
-export default function PlatformHome() {
-  return <PlatformShell />;
+export default function Home() {
+  redirect("/app");
 }
