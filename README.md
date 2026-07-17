@@ -4,8 +4,10 @@ Clickable football program shell for Cy Creek (2026) to pressure-test IA and rol
 
 ## Live links (send these)
 
-- **App:** https://sports-website-navy.vercel.app  
+- **Football Team OS:** https://sports-website-navy.vercel.app  
 - **Workout board:** https://sports-website-navy.vercel.app/workout  
+- **District Platform (DAD → Fan demo):** https://sports-website-navy.vercel.app/district/demo/  
+- **Platform login (role chips):** https://sports-website-navy.vercel.app/district/login/  
 - **GitHub:** https://github.com/CoachBilliott/sports-website  
 
 ## Run (local)
@@ -38,3 +40,23 @@ Tips:
 - Workout present mode (`/workout` or **Show team**)
 
 No real auth, database, or uploads yet.
+
+## Platform app (district / multi-sport / fan / parent)
+
+Lives in [`platform/`](platform/). Does **not** change the football UI.
+
+**Send people this:** https://sports-website-navy.vercel.app/district/demo/  
+(Also `/district/login/` for one-click DAD → Player roles.)
+
+Local:
+
+```bash
+npm run platform
+```
+
+Open [http://localhost:3001](http://localhost:3001) (no `/district` prefix locally).
+
+Production build embeds the platform under `/district/` on the same Vercel site (`npm run build`).
+
+**New agent handoff (everything in one file):** [`platform/HANDOFF.md`](platform/HANDOFF.md)
+
