@@ -38,3 +38,16 @@ Tips:
 - Workout present mode (`/workout` or **Show team**)
 
 No real auth, database, or uploads yet.
+
+## Platform app (separate — district / multi-sport / fan / parent)
+
+Lives in [`platform/`](platform/). Does **not** change the football UI.
+
+```bash
+npm run platform
+```
+
+Open [http://localhost:3001](http://localhost:3001).
+
+Agent brief: [`platform/AGENTS.md`](platform/AGENTS.md) · Plan: [`platform/PLAN.md`](platform/PLAN.md)
+
