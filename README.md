@@ -58,5 +58,6 @@ Open [http://localhost:3001](http://localhost:3001) (no `/district` prefix local
 
 Production build embeds the platform under `/district/` on the same Vercel site (`npm run build`).
 
-**New agent handoff (everything in one file):** [`platform/HANDOFF.md`](platform/HANDOFF.md)
+**New agent handoff (paste into ChatGPT/Codex):** [`HANDOFF.md`](HANDOFF.md)  
+Platform short pointer: [`platform/HANDOFF.md`](platform/HANDOFF.md)
 
