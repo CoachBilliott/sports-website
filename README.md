@@ -51,3 +51,5 @@ Open [http://localhost:3001](http://localhost:3001).
 
 **New agent handoff (everything in one file):** [`platform/HANDOFF.md`](platform/HANDOFF.md)
 
+**Full project handoff for ChatGPT (football + platform + business context):** [`CHATGPT_HANDOFF.md`](CHATGPT_HANDOFF.md)
+
