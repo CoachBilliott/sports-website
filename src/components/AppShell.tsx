@@ -12,6 +12,7 @@ import {
 } from "@/context/AppState";
 import { PlaybookTool } from "@/components/playbook/PlaybookTool";
 import { OffenseWorkflow } from "@/components/playbook/OffenseWorkflow";
+import { footballProductLinks } from "@/lib/product-release";
 import "@/components/playbook/playbook.css";
 import {
   WeeklyQuizWeekPanel,
@@ -13023,13 +13024,14 @@ export function AppShell() {
           : (
             <>
               Cy Creek Football · Team OS
-              {" · "}
-              <a
-                href="/district/demo"
-                className="font-semibold text-[var(--cc-blue)] hover:underline"
-              >
-                Platform
-              </a>
+              {footballProductLinks().map(link => (
+                <span key={link.href}>
+                  {" · "}
+                  <a href={link.href} className="font-semibold text-[var(--cc-blue)] hover:underline">
+                    {link.label}
+                  </a>
+                </span>
+              ))}
             </>
           )}
       </footer>
