@@ -64,6 +64,10 @@ Windows this audit validated the equivalent steps with PowerShell without editin
 the production pipeline: build `platform/` with `NEXT_PUBLIC_BASE_PATH=/district`,
 copy `platform/out/` into the gitignored `public/district/`, then run root `next build`.
 Both apps need network access for the pre-existing Google Fonts fetches.
+Production scripts explicitly select Webpack after diagnosing a hosted Turbopack
+font-resolution failure; see HOSTED_BUILD_DIAGNOSIS.md. The complete npm build
+pipeline has also passed locally with that workaround. Hosted preview success
+must be checked separately from local build/test evidence.
 
 Full-repository lint already fails on older root/district source and additionally
 walks generated district build output. Compare targeted source diagnostics against
