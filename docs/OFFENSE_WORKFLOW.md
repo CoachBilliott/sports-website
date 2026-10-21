@@ -1,7 +1,9 @@
 # Offense weekly workflow (browser-local demo)
 
-This milestone belongs to the root Football Team OS application. The district app,
-standalone Sites, and external playbook/script tools remain separate. No backend,
+This milestone belongs to the root Football Team OS application. District modules,
+standalone Sites, and external playbook/script tools remain separate. The football
+pilot now presents a release notice at district entry URLs; see FOOTBALL_PILOT.md.
+No backend,
 production authorization, athlete tracking, migration service, or infrastructure
 connection is added.
 

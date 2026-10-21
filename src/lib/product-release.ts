@@ -1,6 +1,7 @@
 /**
  * Product rollout only. These settings control what the football entry experience
- * promotes, not authorization, route access, data filtering, or production readiness.
+ * promotes and which unreleased surface placeholder it shows. This is not
+ * authorization, data filtering, or production readiness.
  * Change a stage deliberately when that sport/surface has passed its own pilot.
  */
 export type ReleaseStage = "planned" | "pilot" | "released";
@@ -20,13 +21,11 @@ export const PRODUCT_RELEASE = {
     football: "pilot",
     district: "planned",
   },
-  // Existing public demo links are preserved until the owner chooses a boundary.
-  // This is documentation of the policy, not an access-control implementation.
-  existingDistrictDirectLinks: "preserved-pending-owner-decision",
+  districtEntry: "placeholder-until-surface-release",
 } as const satisfies {
   sports: Record<string, ReleaseStage>;
   surfaces: Record<string, ReleaseStage>;
-  existingDistrictDirectLinks: "preserved-pending-owner-decision";
+  districtEntry: "placeholder-until-surface-release";
 };
 
 export type ProductSport = keyof typeof PRODUCT_RELEASE.sports;
@@ -47,4 +46,10 @@ export const releasedSportIds = () => Object.keys(PRODUCT_RELEASE.sports).filter
 /** Only this list is rendered as cross-product links from the football entry. */
 export function footballProductLinks(): { href: string; label: string }[] {
   return isSurfacePromoted("district") ? [{ href: "/district/demo", label: "Platform" }] : [];
+}
+
+/** One deliberate surface-stage switch restores the existing district routing. */
+export function shouldShowDistrictPlaceholder(pathname: string, stage: ReleaseStage = PRODUCT_RELEASE.surfaces.district): boolean {
+  const districtPath = pathname === "/district" || pathname.startsWith("/district/");
+  return districtPath && stage === "planned";
 }

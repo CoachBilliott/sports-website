@@ -26,3 +26,20 @@ test("unrecognized product surfaces cannot be promoted by a missing setting", ()
     assert.equal(release.isSurfacePromoted(surface), false, surface);
   }
 });
+
+test("planned district URLs show the placeholder including nested and static-export entry paths", () => {
+  for (const path of ["/district", "/district/", "/district/demo", "/district/demo/", "/district/demo/index.html", "/district/index.html", "/district/app/team/install", "/district/fan/volleyball", "/district/player", "/district/_next/static/chunk.js"]) {
+    assert.equal(release.shouldShowDistrictPlaceholder(path), true, path);
+  }
+  for (const path of ["/", "/workout", "/not-released", "/district-other", "/districtly", "/_next/static/chunk.js"]) {
+    assert.equal(release.shouldShowDistrictPlaceholder(path), false, path);
+  }
+});
+
+test("a deliberate district pilot or released stage restores existing routes", () => {
+  for (const stage of ["pilot", "released"]) {
+    for (const path of ["/district", "/district/demo", "/district/fan/volleyball/index.html", "/district/_next/static/chunk.js"]) {
+      assert.equal(release.shouldShowDistrictPlaceholder(path, stage), false, `${stage}: ${path}`);
+    }
+  }
+});

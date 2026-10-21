@@ -8,29 +8,33 @@ promotes football only. No final umbrella brand has been selected or applied.
 football footer consumes that policy and does not advertise the unreleased
 Platform link. The default app, workout board and offense workflow remain football.
 
-This is release visibility, not authorization or production security. Changing a
-stage does not provide authentication, protect routes, filter data, or qualify a
-sport for real student data. No backend/account/security work is included.
+This is release presentation, not authorization or production security. Changing a
+stage does not provide authentication, protect private data, filter stored data,
+or qualify a sport for real student data. No backend/account/security work is included.
 
-## Existing district boundary needs an owner decision
+## District entry boundary during the football pilot
 
-The public `/district/demo`, login, staff, Fan, Parent and Player paths existed
-before the pilot. Their routes, modules, seed records, sport selectors, and export
-wiring remain intact. Direct links still work, including unreleased sport demos.
+The initial pilot intentionally shows **Not released yet** at all `/district`
+entry points, including trailing-slash paths, nested staff/Fan/Parent/Player paths,
+and direct static-export `index.html` URLs. The original browser address remains
+in place; refreshing it shows the same placeholder. The page links back to Football
+and the workout board. It does not erase browser storage or run district demo state.
 
-Before public pilot launch, explicitly choose:
+The existing middleware first checks the district surface stage. While `planned`,
+it rewrites `/district` requests to the root `/not-released` page. District static
+asset requests also receive the placeholder while planned; this is not a data
+security guarantee. Root assets used by the placeholder remain available.
 
-- Keep those historical demos reachable by direct link, while the football entry
-  does not advertise them. Existing AD/demo links continue to work, but anyone with
-  a link can still reach multi-sport previews.
-- Show an unreleased-feature page on district routes until a later release.
-  This provides a stricter public product boundary but changes existing demo links.
-  It still would not be real authorization, and needs separate route/static-asset
-  design rather than simply hiding navigation.
+The district source, modules, seed records, sport selectors, existing static-export
+rewrite logic, `vercel.json`, and build/copy pipeline are preserved. To deliberately
+release district later, change `PRODUCT_RELEASE.surfaces.district` from `planned`
+to `pilot` or `released`, validate its acceptance scope, and rebuild/review/deploy.
+The placeholder check then yields to the original routing and its promotion link
+returns. Other sport stages still require their own deliberate decisions.
 
-No choice has been made in this change; direct behavior is preserved. A strict
-football-only public route boundary must not be claimed until it is selected,
-implemented and verified. Existing standalone Sites are separate and unchanged.
+This changes historical public district links to a release notice after deployment;
+it is not an access-control system or a promise that exported data is private.
+Existing standalone Sites remain separate and unchanged. No deployment is included.
 
 ## First football pilot acceptance
 
@@ -47,11 +51,12 @@ Use sample coaching content only. Before promoting a pilot, verify:
    clears its dependent rows and undo restores them. Empty/error states are usable.
 5. Existing diagrams, attachment fields, weekly attachment screens and archive/import
    paths remain available. Browser-local/demo limits are visible to the coach.
-6. Both production builds pass. `/district` wiring and historical demo routes still
-   work under the current direct-link policy; this is regression coverage, not a
-   declaration that district or other sports are released.
-7. Decide and document the direct district boundary above before broader promotion.
-   Production auth, persistence and student-data readiness need a separate milestone.
+6. Both production builds pass. Direct `/district`, demo/login/staff/Fan/Parent/Player
+   and static HTML entry URLs show **Not released yet**, including refresh. Their
+   Football and workout links work. Root football/workout flows remain available.
+7. Confirm future-release tests restore the original district routing decision and
+   that district export files still exist. Production auth, persistence and
+   student-data readiness need a separate milestone.
 
 ## Later sport release
 
@@ -68,5 +73,6 @@ list both test files explicitly in PowerShell).
 For production HTTP acceptance, start the built root app on localhost and run
 `tests/football-pilot-http.test.mjs` with `FOOTBALL_PILOT_URL` set to that origin.
 It checks that the football entry has no district link/other-sport selector, while
-historical direct district/Fan routes still return 200. Without the environment
+historical direct district/Fan/HTML URLs return the release notice on first request
+and refresh; football/workout stay available. Without the environment
 variable this opt-in test skips; it never starts a server or deploys a site.
