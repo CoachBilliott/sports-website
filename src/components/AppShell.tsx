@@ -11,6 +11,8 @@ import {
   type SchemeConfig,
 } from "@/context/AppState";
 import { PlaybookTool } from "@/components/playbook/PlaybookTool";
+import { OffenseWorkflow } from "@/components/playbook/OffenseWorkflow";
+import { footballProductLinks } from "@/lib/product-release";
 import "@/components/playbook/playbook.css";
 import {
   WeeklyQuizWeekPanel,
@@ -6765,7 +6767,7 @@ function PracticePlansScreen() {
 }
 
 function TeachScreen({ kind }: { kind: string }) {
-  const { side, role, isArchiveMode } = useApp();
+  const { side, role, isArchiveMode, season, activeGameId, scheduleGames, setPage } = useApp();
   const titles: Record<string, string> = {
     "teach-playbook": "Playbook",
     "teach-playbook-builder": "Playbook Builder",
@@ -6776,6 +6778,19 @@ function TeachScreen({ kind }: { kind: string }) {
     "teach-philosophy": "Philosophy",
   };
   const title = titles[kind] ?? "Teach";
+
+  if (side === "offense" && ["teach-playbook", "teach-install", "teach-practice", "teach-call-sheet"].includes(kind) && canSeeScout(role)) {
+    const selectedGame = scheduleGames.find(g => g.id === activeGameId) ?? resolveActiveGame(scheduleGames, activeGameId);
+    return <OffenseWorkflow
+      key={`${season}:${kind}`}
+      season={season}
+      initialWeek={selectedGame?.week ?? 1}
+      initialTab={kind === "teach-playbook" ? "assignments" : kind === "teach-practice" ? "practice" : kind === "teach-call-sheet" ? "calls" : "install"}
+      canEdit={canEditContent(role, isArchiveMode) && !isArchiveMode}
+      onDesigner={() => setPage("teach-playbook-builder")}
+      attachments={kind === "teach-practice" ? <PracticePlansScreen /> : kind === "teach-call-sheet" ? <CallSheetScreen /> : undefined}
+    />;
+  }
 
   if (kind === "teach-playbook-builder") {
     return <PlaybookTool side={side} canEdit={canEditContent(role, isArchiveMode)} persistLibrary={!isArchiveMode} />;
@@ -13009,13 +13024,14 @@ export function AppShell() {
           : (
             <>
               Cy Creek Football · Team OS
-              {" · "}
-              <a
-                href="/district/demo"
-                className="font-semibold text-[var(--cc-blue)] hover:underline"
-              >
-                Platform
-              </a>
+              {footballProductLinks().map(link => (
+                <span key={link.href}>
+                  {" · "}
+                  <a href={link.href} className="font-semibold text-[var(--cc-blue)] hover:underline">
+                    {link.label}
+                  </a>
+                </span>
+              ))}
             </>
           )}
       </footer>

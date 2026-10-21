@@ -1,0 +1,55 @@
+.offense-workflow { color: var(--cc-navy); }
+.offense-workflow h1 { font-size: 1.8rem; font-weight: 800; line-height: 1.15; }
+.offense-workflow h2 { font-size: 1.3rem; font-weight: 750; margin-bottom: .5rem; }
+.offense-workflow h3 { font-size: 1.05rem; font-weight: 700; }
+.offense-workflow small { display: block; font-size: .78rem; font-weight: 400; color: var(--cc-steel); }
+.ow-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.ow-eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .12em; margin-bottom: .5rem; font-weight: 700; }
+.ow-demo { margin: 1rem 0; padding: .7rem 1rem; border-left: 3px solid var(--cc-blue); background: #e9f1fb; font-size: .85rem; }
+.ow-inline { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; margin: .65rem 0; }
+.ow-inline > span:first-child { flex: 1; }
+.ow-context { padding: .5rem 0; }
+.offense-workflow label { display: flex; flex-direction: column; gap: .3rem; font-size: .8rem; font-weight: 650; }
+.offense-workflow input, .offense-workflow textarea, .offense-workflow select { border: 1px solid var(--cc-line); border-radius: .4rem; padding: .55rem .65rem; background: white; color: var(--cc-navy); font: inherit; font-weight: 400; max-width: 100%; }
+.offense-workflow input[type=number] { width: 6rem; }
+.offense-workflow button { border: 1px solid var(--cc-line); background: white; border-radius: .4rem; padding: .55rem .75rem; font-size: .8rem; font-weight: 650; cursor: pointer; }
+.offense-workflow button:hover:not(:disabled) { border-color: var(--cc-blue); color: var(--cc-blue); }
+.offense-workflow button:disabled { opacity: .45; cursor: default; }
+.offense-workflow .ow-primary, .ow-tabs button[aria-current=step] { background: var(--cc-navy); color: white; border-color: var(--cc-navy); }
+.ow-tabs { display: flex; flex-wrap: wrap; gap: .4rem; border-bottom: 1px solid var(--cc-line); padding: .5rem 0 1rem; }
+.ow-panel { background: white; padding: 1.25rem; border: 1px solid var(--cc-line); border-radius: .8rem; margin: 1rem 0; }
+.ow-editor { margin-top: 1rem; }
+.ow-editor fieldset { border: 0; padding: 0; }
+.ow-editor legend { font-size: .9rem; font-weight: 750; margin: 1rem 0 .6rem; }
+.ow-editor fieldset > label { margin: .7rem 0; }
+.ow-assignment-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: .7rem; }
+.ow-note { font-size: .8rem; color: var(--cc-steel); margin: .5rem 0; }
+.ow-empty { padding: 1rem; background: var(--cc-field); color: var(--cc-steel); font-size: .9rem; margin: .6rem 0; }
+.ow-library-list { border-bottom: 1px solid var(--cc-line); margin-bottom: 1rem; padding-bottom: .7rem; }
+.ow-installed, .ow-period { border: 1px solid var(--cc-line); padding: 1rem; margin-top: 1rem; border-radius: .5rem; break-inside: avoid; }
+.ow-snapshot { margin-top: .7rem; font-size: .85rem; }
+.ow-snapshot summary, .ow-attachments > summary { cursor: pointer; font-weight: 650; }
+.ow-snapshot dl { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: .6rem; margin: .8rem 0; }
+.ow-snapshot dt { font-weight: 750; }
+.offense-workflow table { width: 100%; text-align: left; font-size: .85rem; border-collapse: collapse; margin: .8rem 0; }
+.offense-workflow td, .offense-workflow th { border-bottom: 1px solid var(--cc-line); padding: .55rem; vertical-align: top; overflow-wrap: anywhere; }
+.ow-call-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,320px),1fr)); gap: 1rem; }
+.ow-call-grid ol { list-style: decimal; margin-left: 1.3rem; }
+.ow-call-grid li { padding: .6rem 0; border-bottom: 1px solid var(--cc-line); }
+.ow-print-footer { display: none; }
+.ow-attachments { margin-top: 1rem; }
+@media (max-width: 600px) { .ow-panel { padding: .8rem; } .ow-period { padding: .6rem; overflow-x: auto; } .ow-tabs button { flex: 1 1 45%; } }
+@media print {
+  @page offense-week { size: landscape; margin: 12mm; }
+  html:has(.offense-workflow), body:has(.offense-workflow) { background: white !important; background-image: none !important; }
+  .offense-workflow .ow-controls { display: none !important; }
+  .offense-workflow .ow-panel { border: 0; padding: 0; margin: 0; }
+  .offense-workflow { page: offense-week; color: black; font-size: 10pt; }
+  .offense-workflow small, .offense-workflow .ow-note { color: #333; }
+  .ow-call-grid { grid-template-columns: repeat(2,1fr); }
+  .ow-print-footer { display: block; margin-top: 1rem; font-size: 8pt; }
+  .ow-snapshot::details-content { content-visibility: visible; }
+  .ow-snapshot { display: block; }
+  .offense-workflow table { font-size: 10pt; }
+  .ow-period { overflow: visible; }
+}

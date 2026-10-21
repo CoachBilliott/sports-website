@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import type { LibraryItem } from "@/lib/offense-workflow";
 
 const LOGO_SRC = "/cypress-creek-logo.png";
 
@@ -44,23 +45,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 
 
 type TabId = "overview" | "formations" | "plays" | "misc";
-type LibraryType = "formation" | "play" | "misc";
-
-type LibraryItem = {
-  id: string;
-  type: LibraryType;
-  title: string;
-  category: string;
-  subcategory: string;
-  formation: string;
-  description: string;
-  coaching: string;
-  fileKey: string | null;
-  fileName: string | null;
-  contentType: string | null;
-  diagramData: string | null;
-  createdAt: string;
-};
 
 const defensiveFrontOptions = ["ODD", "ODD STACK", "ODD STACK MONSTER", "EVEN STACK", "SPILT"];
 const legacyDefensiveFrontOptions = ["4-2-5", "3-4", "4-3", "3-3-5", "Bear / 5-man"];
