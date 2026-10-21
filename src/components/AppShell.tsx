@@ -11,6 +11,7 @@ import {
   type SchemeConfig,
 } from "@/context/AppState";
 import { PlaybookTool } from "@/components/playbook/PlaybookTool";
+import { OffenseWorkflow } from "@/components/playbook/OffenseWorkflow";
 import "@/components/playbook/playbook.css";
 import {
   WeeklyQuizWeekPanel,
@@ -6765,7 +6766,7 @@ function PracticePlansScreen() {
 }
 
 function TeachScreen({ kind }: { kind: string }) {
-  const { side, role, isArchiveMode } = useApp();
+  const { side, role, isArchiveMode, season, activeGameId, scheduleGames, setPage } = useApp();
   const titles: Record<string, string> = {
     "teach-playbook": "Playbook",
     "teach-playbook-builder": "Playbook Builder",
@@ -6776,6 +6777,19 @@ function TeachScreen({ kind }: { kind: string }) {
     "teach-philosophy": "Philosophy",
   };
   const title = titles[kind] ?? "Teach";
+
+  if (side === "offense" && ["teach-playbook", "teach-install", "teach-practice", "teach-call-sheet"].includes(kind) && canSeeScout(role)) {
+    const selectedGame = scheduleGames.find(g => g.id === activeGameId) ?? resolveActiveGame(scheduleGames, activeGameId);
+    return <OffenseWorkflow
+      key={`${season}:${kind}`}
+      season={season}
+      initialWeek={selectedGame?.week ?? 1}
+      initialTab={kind === "teach-playbook" ? "assignments" : kind === "teach-practice" ? "practice" : kind === "teach-call-sheet" ? "calls" : "install"}
+      canEdit={canEditContent(role, isArchiveMode) && !isArchiveMode}
+      onDesigner={() => setPage("teach-playbook-builder")}
+      attachments={kind === "teach-practice" ? <PracticePlansScreen /> : kind === "teach-call-sheet" ? <CallSheetScreen /> : undefined}
+    />;
+  }
 
   if (kind === "teach-playbook-builder") {
     return <PlaybookTool side={side} canEdit={canEditContent(role, isArchiveMode)} persistLibrary={!isArchiveMode} />;
