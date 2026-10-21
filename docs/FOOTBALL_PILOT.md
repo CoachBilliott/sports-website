@@ -76,3 +76,7 @@ It checks that the football entry has no district link/other-sport selector, whi
 historical direct district/Fan/HTML URLs return the release notice on first request
 and refresh; football/workout stay available. Without the environment
 variable this opt-in test skips; it never starts a server or deploys a site.
+The local district export must already be built/copied: the check reads its real
+script reference and verifies district JS/logo/RSC-style paths show the notice,
+while root football CSS/JS/logo remain available and adjacent `/district-other`
+does not accidentally receive the notice.
